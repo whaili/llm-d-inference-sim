@@ -105,8 +105,6 @@ func (s *VllmSimulator) startServer() error {
 	r.GET("/v1/models", s.HandleModels)
 	// supports /metrics prometheus API
 	r.GET("/metrics", fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler()))
-	// for test only
-	r.GET("/test", s.HandleTest)
 
 	server := fasthttp.Server{
 		ErrorHandler: s.HandleError,
@@ -288,10 +286,6 @@ func (s *VllmSimulator) HandleModels(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
 	ctx.Response.SetBody(data)
-}
-
-func (s *VllmSimulator) HandleTest(ctx *fasthttp.RequestCtx) {
-	s.logger.Info("in /test")
 }
 
 func (s *VllmSimulator) HandleError(ctx *fasthttp.RequestCtx, err error) {
