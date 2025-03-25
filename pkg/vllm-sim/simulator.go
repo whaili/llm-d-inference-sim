@@ -1,0 +1,379 @@
+/*
+Copyright 2025 The vLLM-Sim Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Package vllmsim implements the vLLM simulator.
+package vllmsim
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/buaazp/fasthttprouter"
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/spf13/pflag"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
+	vllmapi "github.ibm.com/ai-platform-research/vllm-sim/pkg/vllm-api"
+)
+
+// New creates a new VllmSimulator instance with the given logger
+func New(logger logr.Logger) *VllmSimulator {
+	return &VllmSimulator{
+		logger:   logger,
+		maxLoras: 2,
+	}
+}
+
+// Start starts the simulator
+func (s *VllmSimulator) Start() error {
+	// parse command line parameters
+	err := s.parseCommandParams()
+	if err != nil {
+		return err
+	}
+
+	// initialize prometheus metrics
+	err = s.createAndRegisterPrometheus()
+	if err != nil {
+		return err
+	}
+
+	// start the http server
+	return s.startServer()
+}
+
+// parseCommandParams parses and validates command line parameters
+func (s *VllmSimulator) parseCommandParams() error {
+	pflag.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
+	pflag.IntVar(&s.port, "port", 0, "Port")
+	pflag.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
+	pflag.IntVar(&s.timeToFirstToken, "time-to-first-token", 0, "Time to first token (in milliseconds)")
+	pflag.StringVar(&s.model, "model", "", "Currently 'loaded' model")
+	var lorasStr string
+	pflag.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
+
+	pflag.Parse()
+
+	s.loraAdaptors = strings.Split(lorasStr, ",")
+
+	// validate parsed values
+	if s.model == "" {
+		return fmt.Errorf("Model parameter is empty")
+	}
+	if s.mode != modeEcho && s.mode != modeRandom {
+		return fmt.Errorf("Invalid mode '%s', valid values are 'random' and 'echo'", s.mode)
+	}
+	if s.port <= 0 {
+		return fmt.Errorf("Invalid port '%d'", s.port)
+	}
+	if s.interTokenLatency < 0 {
+		return fmt.Errorf("Inter token latency cannot be negative")
+	}
+	if s.timeToFirstToken < 0 {
+		return fmt.Errorf("Time to first token cannot be negative")
+	}
+
+	return nil
+}
+
+// startServer starts http server on port defined in command line
+func (s *VllmSimulator) startServer() error {
+	r := fasthttprouter.New()
+
+	// support completion APIs
+	r.POST("/v1/chat/completions", s.HandleChatCompletions)
+	r.POST("/v1/completions", s.HandleTextCompletions)
+	// supports /models API
+	r.GET("/v1/models", s.HandleModels)
+	// supports /metrics prometheus API
+	r.GET("/metrics", fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler()))
+	// for test only
+	r.GET("/test", s.HandleTest)
+
+	server := fasthttp.Server{
+		ErrorHandler: s.HandleError,
+		Handler:      r.Handler,
+		Logger:       s,
+	}
+
+	s.logger.Info("Server starting", "port", s.port)
+	listener, err := net.Listen("tcp4", fmt.Sprintf(":%d", s.port))
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+
+	return server.Serve(listener)
+}
+
+// Print prints to a log, implementation of fasthttp.Logger
+func (s *VllmSimulator) Printf(format string, args ...interface{}) {
+	s.logger.Info("Server error", "msg", fmt.Sprintf(format, args...))
+}
+
+// readRequest reads and parses data from the body of the given request according the type defined by isChatCompletion
+func (s *VllmSimulator) readRequest(ctx *fasthttp.RequestCtx, isChatCompletion bool) (completionRequest, error) {
+	if isChatCompletion {
+		var req chatCompletionRequest
+
+		err := json.Unmarshal(ctx.Request.Body(), &req)
+
+		return &req, err
+	}
+	var req textCompletionRequest
+
+	err := json.Unmarshal(ctx.Request.Body(), &req)
+	return &req, err
+}
+
+// HandleChatCompletions http handler for /v1/chat/completions
+func (s *VllmSimulator) HandleChatCompletions(ctx *fasthttp.RequestCtx) {
+	s.logger.Info("chat completion request received")
+	s.handleCompletions(ctx, true)
+}
+
+// HandleTextCompletions http handler for /v1/completions
+func (s *VllmSimulator) HandleTextCompletions(ctx *fasthttp.RequestCtx) {
+	s.logger.Info("completion request received")
+	s.handleCompletions(ctx, false)
+}
+
+// isValidModel checks if the given model is the base model or one of "loaded" LoRAs
+func (s *VllmSimulator) isValidModel(model string) bool {
+	if model == s.model {
+		return true
+	}
+
+	for _, lora := range s.loraAdaptors {
+		if model == lora {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isLora returns true if the given model name is one of loaded LoRAs
+func (s *VllmSimulator) isLora(model string) bool {
+	for _, lora := range s.loraAdaptors {
+		if model == lora {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleCompletions general completion requests handler, support both text and chat completion APIs
+func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatCompletion bool) {
+	vllmReq, err := s.readRequest(ctx, isChatCompletion)
+	if err != nil {
+		s.logger.Error(err, "failed to read and parse request body")
+		ctx.Error("Failed to read and parse request body, "+err.Error(), fasthttp.StatusBadRequest)
+		return
+	}
+
+	model := vllmReq.getModel()
+
+	if !s.isValidModel(model) {
+		s.sendCompletionError(ctx, fmt.Sprintf("The model `%s` does not exist.", vllmReq.getModel()),
+			"NotFoundError", fasthttp.StatusNotFound)
+		return
+	}
+
+	if s.isLora(model) {
+		// if current request's model is LoRA, add it to the list of running loras
+		value, ok := s.runningLoras.Load(model)
+		intValue := 0
+
+		if !ok {
+			s.logger.Info("Create referense counter", "model", model)
+			intValue = 0
+		} else {
+			intValue = value.(int)
+		}
+		s.runningLoras.Store(model, intValue+1)
+		s.logger.Info("Update LoRA referense counter", "model", model, "old value", intValue, "new value", intValue+1)
+
+		// TODO - check if thie request went to the waiting queue - add it to waiting map
+		s.reportLoras()
+	}
+
+	responseTxt := vllmReq.createResponseText(s.mode)
+
+	if vllmReq.isStream() {
+		s.sendStreamingResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
+	} else {
+		s.sendResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
+	}
+}
+
+// decrease model usage reference number
+func (s *VllmSimulator) responseSentCallback(model string) {
+	if model == s.model {
+		// this is base model - do nothing
+		return
+	}
+
+	value, ok := s.runningLoras.Load(model)
+
+	if !ok {
+		s.logger.Info("Error: nil referense counter", "model", model)
+		s.logger.Error(nil, "Zerro model reference", "model", model)
+	} else {
+		intValue := value.(int)
+		if intValue > 1 {
+			s.runningLoras.Store(model, intValue-1)
+			s.logger.Info("Update LoRA referense counter", "model", model, "prev value", intValue, "new value", intValue-1)
+		} else {
+			// last lora instance stopped it execution - remove from the map
+			s.runningLoras.Delete(model)
+			s.logger.Info("Remove LoRA from set of running loras", "model", model)
+		}
+	}
+
+	s.reportLoras()
+}
+
+// sendCompletionError sends an error response for the curent completion request
+func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, msg string, errType string, code int) {
+	compErr := completionError{
+		Object:  "error",
+		Message: msg,
+		Type:    errType,
+		Code:    code,
+		Param:   nil,
+	}
+	s.logger.Error(nil, compErr.Message)
+
+	data, err := json.Marshal(compErr)
+	if err != nil {
+		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
+	} else {
+		ctx.SetContentType("application/json")
+		ctx.SetStatusCode(fasthttp.StatusNotFound)
+		ctx.SetBody(data)
+	}
+}
+
+// HandleModels handles /v1/models request according the data stored in the simulator
+func (s *VllmSimulator) HandleModels(ctx *fasthttp.RequestCtx) {
+	modelsResp := s.createModelsResponse()
+
+	data, err := json.Marshal(modelsResp)
+	if err != nil {
+		s.logger.Error(err, "Failed to marshal models response")
+		ctx.Error("Failed to marshal models response, "+err.Error(), fasthttp.StatusInternalServerError)
+		return
+	}
+
+	ctx.Response.Header.SetContentType("application/json")
+	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	ctx.Response.SetBody(data)
+}
+
+func (s *VllmSimulator) HandleTest(ctx *fasthttp.RequestCtx) {
+	s.logger.Info("in /test")
+}
+
+func (s *VllmSimulator) HandleError(ctx *fasthttp.RequestCtx, err error) {
+	s.logger.Error(err, "VLLM server error")
+}
+
+// createCompletionResponse creates response for completion request, supports both completion requests types (text and chat) as defined by isChatCompletion
+// respText - content to be sent in the response
+// model - model name
+// finishReason - a pointer to string that represents finish reason, can be nil or stop or length, ...
+func (s *VllmSimulator) createCompletionResponse(isChatCompletion bool, respText string, model string, finishReason *string) completionResponse {
+	baseResp := baseCompletionResponse{
+		ID:      chatComplIdPrefix + uuid.NewString(),
+		Created: time.Now().Unix(),
+		Model:   model,
+	}
+	baseChoice := baseResponseChoice{Index: 0, FinishReason: finishReason}
+
+	if isChatCompletion {
+		return &chatCompletionResponse{
+			baseCompletionResponse: baseResp,
+			Choices:                []chatRespChoice{{Message: message{Role: roleAssistant, Content: respText}, baseResponseChoice: baseChoice}},
+		}
+	} else {
+		return &textCompletionResponse{
+			baseCompletionResponse: baseResp,
+			Choices:                []textRespChoice{{baseResponseChoice: baseChoice, Text: respText}},
+		}
+	}
+}
+
+// sendResponse sends response for completion API, supports both completions (text and chat) according the value of isChatCompletion
+// respText - content to be sent in the response
+// model - model name
+func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.RequestCtx, respText string, model string) {
+	finishReason := stopFinishReason
+	resp := s.createCompletionResponse(isChatCompletion, respText, model, &finishReason)
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		ctx.Error("Response body creation failed, "+err.Error(), fasthttp.StatusInternalServerError)
+		return
+	}
+
+	// calculate how long to wait before return the response, time is based on number of tokens (use words number)
+	numOfWords := len(strings.Fields(respText))
+	totalMillisToWait := s.timeToFirstToken + (numOfWords-1)*s.interTokenLatency
+	time.Sleep(time.Duration(totalMillisToWait) * time.Millisecond)
+
+	// TODO - maybe add pod id to response header for testing
+	ctx.Response.Header.SetContentType("application/json")
+	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	ctx.Response.SetBody(data)
+
+	s.responseSentCallback(model)
+}
+
+// createModelsResponse creates and returns ModelResponse for the current state, returned array of models contains the base model + LoRA adapters if exist
+func (s *VllmSimulator) createModelsResponse() vllmapi.ModelsResponse {
+	modelsResp := vllmapi.ModelsResponse{Object: "list", Data: []vllmapi.ModelsResponseModelInfo{}}
+
+	// add base model's info
+	modelsResp.Data = append(modelsResp.Data, vllmapi.ModelsResponseModelInfo{
+		ID:      s.model,
+		Object:  vllmapi.ObjectModel,
+		Created: time.Now().Unix(),
+		OwnedBy: "vllm",
+		Root:    s.model,
+		Parent:  nil,
+	})
+
+	// add LoRA adapter's info
+	for _, lora := range s.loraAdaptors {
+		modelsResp.Data = append(modelsResp.Data, vllmapi.ModelsResponseModelInfo{
+			ID:      lora,
+			Object:  vllmapi.ObjectModel,
+			Created: time.Now().Unix(),
+			OwnedBy: "vllm",
+			Root:    lora,
+			Parent:  &s.model,
+		})
+	}
+
+	return modelsResp
+}

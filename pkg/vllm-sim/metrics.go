@@ -1,0 +1,78 @@
+/*
+Copyright 2025 The vLLM-Sim Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Contains functions related to prometheus metrics
+
+package vllmsim
+
+import (
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	vllmapi "github.ibm.com/ai-platform-research/vllm-sim/pkg/vllm-api"
+)
+
+// createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator
+// Metrics reported:
+// - lora_requests_info
+func (s *VllmSimulator) createAndRegisterPrometheus() error {
+	s.loraInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: "",
+			Name:      "vllm:lora_requests_info",
+			Help:      "Running stats on lora requests.",
+		},
+		[]string{vllmapi.PromLabelMaxLora, vllmapi.PromLabelRunningLoraAdapters, vllmapi.PromLabelWaitingLoraAdapters},
+	)
+
+	if err := prometheus.Register(s.loraInfo); err != nil {
+		s.logger.Error(err, "Prometheus lora info gauge register failed")
+		return err
+	}
+
+	s.setInitialPrometheusMetrics()
+
+	return nil
+}
+
+// setInitialPrometheusMetrics send default values to prometheus
+func (s *VllmSimulator) setInitialPrometheusMetrics() {
+	s.loraInfo.WithLabelValues(
+		strconv.Itoa(s.maxLoras),
+		"",
+		"").Set(float64(time.Now().Unix()))
+}
+
+// reportLoras sets information about loaded LoRA adapters
+func (s *VllmSimulator) reportLoras() {
+	var loras []string
+
+	s.runningLoras.Range(func(key interface{}, value interface{}) bool {
+		if lora, ok := key.(string); ok {
+			loras = append(loras, lora)
+		}
+		return true
+	})
+
+	allLoras := strings.Join(loras, ",")
+	s.loraInfo.WithLabelValues(
+		strconv.Itoa(s.maxLoras),
+		allLoras,
+		// TODO - add names of loras in queue
+		"").Set(float64(time.Now().Unix()))
+}
