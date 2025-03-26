@@ -73,7 +73,10 @@ func (s *VllmSimulator) parseCommandParams() error {
 
 	pflag.Parse()
 
-	s.loraAdaptors = strings.Split(lorasStr, ",")
+	loras := strings.Split(lorasStr, ",")
+	for _, lora := range loras {
+		s.loraAdaptors.Store(lora, "")
+	}
 
 	// validate parsed values
 	if s.model == "" {
@@ -114,6 +117,9 @@ func (s *VllmSimulator) startServer() error {
 	r.POST("/v1/completions", s.HandleTextCompletions)
 	// supports /models API
 	r.GET("/v1/models", s.HandleModels)
+	// support load/unload of lora adapter
+	r.POST("/v1/load_lora_adapter", s.HandleLoadLora)
+	r.POST("/v1/unload_lora_adapter", s.HandleUnloadLora)
 	// supports /metrics prometheus API
 	r.GET("/metrics", fasthttpadaptor.NewFastHTTPHandler(promhttp.Handler()))
 
@@ -165,13 +171,41 @@ func (s *VllmSimulator) HandleTextCompletions(ctx *fasthttp.RequestCtx) {
 	s.handleCompletions(ctx, false)
 }
 
+func (s *VllmSimulator) HandleLoadLora(ctx *fasthttp.RequestCtx) {
+	s.logger.Info("load lora request received")
+
+	var req loadLoraRequest
+	err := json.Unmarshal(ctx.Request.Body(), &req)
+	if err != nil {
+		s.logger.Error(err, "failed to read and parse load lora request body")
+		ctx.Error("failed to read and parse load lora request body, "+err.Error(), fasthttp.StatusBadRequest)
+		return
+	}
+
+	s.addLora(req.LoraName)
+}
+
+func (s *VllmSimulator) HandleUnloadLora(ctx *fasthttp.RequestCtx) {
+	s.logger.Info("load lora request received")
+
+	var req unloadLoraRequest
+	err := json.Unmarshal(ctx.Request.Body(), &req)
+	if err != nil {
+		s.logger.Error(err, "failed to read and parse unload lora request body")
+		ctx.Error("failed to read and parse unload lora request body, "+err.Error(), fasthttp.StatusBadRequest)
+		return
+	}
+
+	s.removeLora(req.LoraName)
+}
+
 // isValidModel checks if the given model is the base model or one of "loaded" LoRAs
 func (s *VllmSimulator) isValidModel(model string) bool {
 	if model == s.model {
 		return true
 	}
 
-	for _, lora := range s.loraAdaptors {
+	for _, lora := range s.getLoras() {
 		if model == lora {
 			return true
 		}
@@ -182,7 +216,7 @@ func (s *VllmSimulator) isValidModel(model string) bool {
 
 // isLora returns true if the given model name is one of loaded LoRAs
 func (s *VllmSimulator) isLora(model string) bool {
-	for _, lora := range s.loraAdaptors {
+	for _, lora := range s.getLoras() {
 		if model == lora {
 			return true
 		}
@@ -285,7 +319,12 @@ func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, msg string
 
 // HandleModels handles /v1/models request according the data stored in the simulator
 func (s *VllmSimulator) HandleModels(ctx *fasthttp.RequestCtx) {
-	modelsResp := s.createModelsResponse()
+	modelsResp, err := s.createModelsResponse()
+	if err != nil {
+		s.logger.Error(err, "Cannot create /models response")
+		ctx.Error("Cannot create /models response, "+err.Error(), fasthttp.StatusInternalServerError)
+		return
+	}
 
 	data, err := json.Marshal(modelsResp)
 	if err != nil {
@@ -355,7 +394,7 @@ func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.Reques
 }
 
 // createModelsResponse creates and returns ModelResponse for the current state, returned array of models contains the base model + LoRA adapters if exist
-func (s *VllmSimulator) createModelsResponse() vllmapi.ModelsResponse {
+func (s *VllmSimulator) createModelsResponse() (*vllmapi.ModelsResponse, error) {
 	modelsResp := vllmapi.ModelsResponse{Object: "list", Data: []vllmapi.ModelsResponseModelInfo{}}
 
 	// add base model's info
@@ -369,7 +408,7 @@ func (s *VllmSimulator) createModelsResponse() vllmapi.ModelsResponse {
 	})
 
 	// add LoRA adapter's info
-	for _, lora := range s.loraAdaptors {
+	for _, lora := range s.getLoras() {
 		modelsResp.Data = append(modelsResp.Data, vllmapi.ModelsResponseModelInfo{
 			ID:      lora,
 			Object:  vllmapi.ObjectModel,
@@ -380,5 +419,5 @@ func (s *VllmSimulator) createModelsResponse() vllmapi.ModelsResponse {
 		})
 	}
 
-	return modelsResp
+	return &modelsResp, nil
 }

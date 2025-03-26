@@ -49,7 +49,7 @@ type VllmSimulator struct {
 	// model defines the current base model name
 	model string
 	// loraAdaptors contains list of LoRA available adaptors
-	loraAdaptors []string
+	loraAdaptors sync.Map
 	// maxLoras defines maximum number of loaded loras
 	maxLoras int
 	// maxLoras defines maximum number of loras to store in CPU memory
@@ -223,4 +223,35 @@ type completionError struct {
 	Param *string `json:"param"`
 	// Code is http status Code
 	Code int `json:"code"`
+}
+
+type loadLoraRequest struct {
+	LoraName string `json:"lora_name"`
+	LoraPath string `json:"lora_path"`
+}
+
+type unloadLoraRequest struct {
+	LoraName string `json:"lora_name"`
+}
+
+func (s *VllmSimulator) getLoras() []string {
+
+	loras := make([]string, 0)
+
+	s.loraAdaptors.Range(func(key, _ any) bool {
+		if lora, ok := key.(string); ok {
+			loras = append(loras, lora)
+		}
+		return true
+	})
+
+	return loras
+}
+
+func (s *VllmSimulator) addLora(lora string) {
+	s.loraAdaptors.Store(lora, "")
+}
+
+func (s *VllmSimulator) removeLora(lora string) {
+	s.loraAdaptors.Delete(lora)
 }
