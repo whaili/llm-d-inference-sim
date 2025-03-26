@@ -79,6 +79,8 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
  - `random`: returns a sentence chosen at random from a set of pre-defined sentences
 - `time-to-first-token`: the time to the first token (in milliseconds), optional, by default zero
 - `inter-token-latency`: the time to 'generate' each additional token (in milliseconds), optional, by default zero
+- `max-loras`: maximum number of LoRAs in a single batch, optional, default is one
+- `max-cpu-loras`: maximum number of LoRAs to store in CPU memory, optional, must be >= than max_loras, default is max_loras
 
 
 ## Working with docker image

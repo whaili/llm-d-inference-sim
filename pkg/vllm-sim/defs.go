@@ -50,8 +50,10 @@ type VllmSimulator struct {
 	model string
 	// loraAdaptors contains list of LoRA available adaptors
 	loraAdaptors []string
-	// maxLoras defines maximum number of loras
+	// maxLoras defines maximum number of loaded loras
 	maxLoras int
+	// maxLoras defines maximum number of loras to store in CPU memory
+	maxCpuLoras int
 	// runningLoras is a collection of running loras, key of lora's name, value is number of requests using this lora
 	runningLoras sync.Map
 	// waitingLoras will represent collection of loras defined in requests in the queue - Not implemented yet

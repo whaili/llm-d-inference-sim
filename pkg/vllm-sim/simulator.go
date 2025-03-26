@@ -37,8 +37,7 @@ import (
 // New creates a new VllmSimulator instance with the given logger
 func New(logger logr.Logger) *VllmSimulator {
 	return &VllmSimulator{
-		logger:   logger,
-		maxLoras: 2,
+		logger: logger,
 	}
 }
 
@@ -69,6 +68,8 @@ func (s *VllmSimulator) parseCommandParams() error {
 	pflag.StringVar(&s.model, "model", "", "Currently 'loaded' model")
 	var lorasStr string
 	pflag.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
+	pflag.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
+	pflag.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
 
 	pflag.Parse()
 
@@ -89,6 +90,16 @@ func (s *VllmSimulator) parseCommandParams() error {
 	}
 	if s.timeToFirstToken < 0 {
 		return fmt.Errorf("Time to first token cannot be negative")
+	}
+	if s.maxLoras < 1 {
+		return fmt.Errorf("Max loras cannot be less than 1")
+	}
+	if s.maxCpuLoras == 0 {
+		// max cpu loras by default is same as max loras
+		s.maxCpuLoras = s.maxLoras
+	}
+	if s.maxCpuLoras < 1 {
+		return fmt.Errorf("Max CPU loras cannot be less than 1")
 	}
 
 	return nil
