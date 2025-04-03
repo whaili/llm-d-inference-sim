@@ -58,8 +58,11 @@ type VllmSimulator struct {
 	runningLoras sync.Map
 	// waitingLoras will represent collection of loras defined in requests in the queue - Not implemented yet
 	waitingLoras sync.Map
+	nRunningReqs int64
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
+	// runningRequests is prometheus gauge
+	runningRequests *prometheus.GaugeVec
 }
 
 // baseResponseChoice contains base completion response's choice related information

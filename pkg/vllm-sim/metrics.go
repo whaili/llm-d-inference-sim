@@ -45,6 +45,20 @@ func (s *VllmSimulator) createAndRegisterPrometheus() error {
 		return err
 	}
 
+	s.runningRequests = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: "",
+			Name:      "vllm:num_requests_running",
+			Help:      "Number of requests currently running on GPU.",
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+
+	if err := prometheus.Register(s.runningRequests); err != nil {
+		s.logger.Error(err, "Prometheus number of running requests gauge register failed")
+		return err
+	}
+
 	s.setInitialPrometheusMetrics()
 
 	return nil
@@ -56,6 +70,10 @@ func (s *VllmSimulator) setInitialPrometheusMetrics() {
 		strconv.Itoa(s.maxLoras),
 		"",
 		"").Set(float64(time.Now().Unix()))
+
+	s.nRunningReqs = 0
+	s.runningRequests.WithLabelValues(
+		s.model).Set(float64(s.nRunningReqs))
 }
 
 // reportLoras sets information about loaded LoRA adapters
@@ -75,4 +93,10 @@ func (s *VllmSimulator) reportLoras() {
 		allLoras,
 		// TODO - add names of loras in queue
 		"").Set(float64(time.Now().Unix()))
+}
+
+// reportRequests sets information about running completion requests
+func (s *VllmSimulator) reportRequests() {
+	s.runningRequests.WithLabelValues(
+		s.model).Set(float64(s.nRunningReqs))
 }

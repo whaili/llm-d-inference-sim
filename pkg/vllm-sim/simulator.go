@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/buaazp/fasthttprouter"
@@ -259,6 +260,8 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		// TODO - check if thie request went to the waiting queue - add it to waiting map
 		s.reportLoras()
 	}
+	atomic.AddInt64(&(s.nRunningReqs), 1)
+	s.reportRequests()
 
 	responseTxt := vllmReq.createResponseText(s.mode)
 
@@ -294,6 +297,9 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 	}
 
 	s.reportLoras()
+
+	atomic.AddInt64(&(s.nRunningReqs), -1)
+	s.reportRequests()
 }
 
 // sendCompletionError sends an error response for the curent completion request
