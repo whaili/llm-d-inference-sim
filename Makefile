@@ -14,7 +14,7 @@
 
 # Makefile for the vllm-sim project
 
-PACKAGE_VLLM_SIM = github.ibm.com/ai-platform-research/vllm-sim/cmd/vllm-sim
+PACKAGE_VLLM_SIM = github.com/neuralmagic/vllm-sim/cmd/vllm-sim
 VLLM_SIM_NAME = vllm-sim/vllm-sim
 VLLM_SIM_TAG ?= 0.0.2
 

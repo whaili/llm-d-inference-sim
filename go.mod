@@ -1,4 +1,4 @@
-module github.ibm.com/ai-platform-research/vllm-sim
+module github.com/neuralmagic/vllm-sim
 
 go 1.23.4
 

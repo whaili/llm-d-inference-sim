@@ -28,11 +28,11 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	vllmapi "github.com/neuralmagic/vllm-sim/pkg/vllm-api"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
-	vllmapi "github.ibm.com/ai-platform-research/vllm-sim/pkg/vllm-api"
 )
 
 // New creates a new VllmSimulator instance with the given logger

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
+	vllmapi "github.com/neuralmagic/vllm-sim/pkg/vllm-api"
 	"github.com/prometheus/client_golang/prometheus"
-	vllmapi "github.ibm.com/ai-platform-research/vllm-sim/pkg/vllm-api"
 )
 
 // createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator

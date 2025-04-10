@@ -23,8 +23,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.ibm.com/ai-platform-research/vllm-sim/cmd/signals"
-	vllmsim "github.ibm.com/ai-platform-research/vllm-sim/pkg/vllm-sim"
+	"github.com/neuralmagic/vllm-sim/cmd/signals"
+	vllmsim "github.com/neuralmagic/vllm-sim/pkg/vllm-sim"
 )
 
 func main() {
