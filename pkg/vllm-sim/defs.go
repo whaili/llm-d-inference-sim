@@ -63,6 +63,10 @@ type VllmSimulator struct {
 	loraInfo *prometheus.GaugeVec
 	// runningRequests is prometheus gauge
 	runningRequests *prometheus.GaugeVec
+	// waitingRequests is prometheus gauge for number of queued requests
+	waitingRequests *prometheus.GaugeVec
+	// kvCacheUsagePercentage is prometheus gauge
+	kvCacheUsagePercentage *prometheus.GaugeVec
 }
 
 // baseResponseChoice contains base completion response's choice related information

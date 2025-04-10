@@ -59,6 +59,36 @@ func (s *VllmSimulator) createAndRegisterPrometheus() error {
 		return err
 	}
 
+	// not supported for now, reports constant value
+	s.waitingRequests = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: "",
+			Name:      "vllm:num_requests_waiting",
+			Help:      "Prometheus metric for the number of queued requests.",
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+
+	if err := prometheus.Register(s.waitingRequests); err != nil {
+		s.logger.Error(err, "Prometheus number of requests in queue gauge register failed")
+		return err
+	}
+
+	// not supported for now, reports constant value
+	s.kvCacheUsagePercentage = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: "",
+			Name:      "vllm:gpu_cache_usage_perc",
+			Help:      "Prometheus metric for the fraction of KV-cache blocks currently in use (from 0 to 1).",
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+
+	if err := prometheus.Register(s.kvCacheUsagePercentage); err != nil {
+		s.logger.Error(err, "Prometheus kv cache usage percentage gauge register failed")
+		return err
+	}
+
 	s.setInitialPrometheusMetrics()
 
 	return nil
@@ -74,6 +104,10 @@ func (s *VllmSimulator) setInitialPrometheusMetrics() {
 	s.nRunningReqs = 0
 	s.runningRequests.WithLabelValues(
 		s.model).Set(float64(s.nRunningReqs))
+	s.waitingRequests.WithLabelValues(
+		s.model).Set(float64(0))
+	s.kvCacheUsagePercentage.WithLabelValues(
+		s.model).Set(float64(0))
 }
 
 // reportLoras sets information about loaded LoRA adapters
