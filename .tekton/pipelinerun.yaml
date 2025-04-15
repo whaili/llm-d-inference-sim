@@ -1,0 +1,415 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: vllm-sim
+  annotations:
+    pipelinesascode.tekton.dev/on-event: "[pull_request, push]"
+    pipelinesascode.tekton.dev/on-target-branch: "[main, dev]"
+    pipelinesascode.tekton.dev/task: "git-clone"
+    pipelinesascode.tekton.dev/max-keep-runs: "5"
+    pipelinesascode.tekton.dev/git-status: "true"
+    pipelinesascode.tekton.dev/on-cel-expression: >
+      (!has(body.ref) || body.ref == 'refs/heads/main' || body.ref == 'refs/heads/dev') &&
+      (!has(body.head_commit) || !has(body.head_commit.author) || !body.head_commit.author.name.matches("(?i).*ci-tag-bot.*")) &&
+      (!has(body.pull_request) || (body.pull_request.base.ref == 'main' || body.pull_request.base.ref == 'dev'))
+spec:
+  podTemplate:
+    serviceAccountName: pipeline
+    securityContext:
+      fsGroup: 0
+    imagePullSecrets:
+      - name: icr-secret
+  params:
+    - name: runOptional
+      value: "true"
+    - name: repo_url
+      value: "{{ repo_url }}"
+    - name: revision
+      value: "{{ revision }}"
+    - name: deleteExisting
+      value: "true"
+    - name: source_branch
+      value: "{{ source_branch }}"
+  pipelineSpec:
+    params:
+      - name: repo_url
+      - name: revision
+      - name: deleteExisting
+      - name: source_branch
+    workspaces:
+      - name: source
+      - name: basic-auth
+      - name: git-auth
+      - name: registry-secret
+    tasks:
+      - name: fix-permissions
+        taskSpec:
+          workspaces:
+            - name: source
+              workspace: source
+          steps:
+            - name: fix
+              image: quay.io/projectquay/golang:1.24
+              script: |
+                #!/bin/sh
+                echo "Fixing permissions on /workspace/source..."
+                chmod -R 777 /workspace/source || true
+        workspaces:
+          - name: source
+            workspace: source
+
+      # - name: debug-user
+      #   taskSpec:
+      #     workspaces:
+      #       - name: source
+      #         workspace: source
+      #     steps:
+      #       - name: show-user-info
+      #         image: busybox
+      #         script: |
+      #           #!/bin/sh
+      #           echo "Current UID:"
+      #           id -u
+      #           echo "Current GID:"
+      #           id -g
+      #           echo "Permissions on /workspace/source:"
+      #           ls -ld /workspace/source
+      #   workspaces:
+      #     - name: source
+      #       workspace: source
+
+      - name: which-branch
+        taskRef:
+          name: print-branch-task
+        runAfter:
+          - fix-permissions
+        params:
+          - name: source-branch
+            value: "$(params.source_branch)"
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: fetch-repository
+        taskRef:
+          name: git-clone
+        runAfter:
+          - which-branch
+        workspaces:
+          - name: output
+            workspace: source
+          - name: basic-auth
+            workspace: basic-auth
+        params:
+          - name: url
+            value: $(params.repo_url)
+          - name: revision
+            value: $(params.revision)
+          - name: deleteExisting
+            value: "$(params.deleteExisting)"
+
+      - name: go-lint
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+        taskRef:
+          name: go-lint-task
+        runAfter:
+          - fetch-repository
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: go-test
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+        taskRef:
+          name: go-test-task
+        runAfter:
+          - go-lint
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: go-build
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+        taskRef:
+          name: go-build-task
+        runAfter:
+          - go-test
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: extract-version-and-registry
+        params:
+          - name: source-branch  
+            value: "$(params.source_branch)"
+        runAfter:
+          - go-build
+        taskRef:
+          name: extract-version-and-registry-task
+        workspaces:
+          - name: source
+            workspace: source
+                        
+      # - name: promote-to-prod
+      #   when:
+      #     - input: "$(params.runOptional)"
+      #       operator: in
+      #       values: ["true"]
+      #     - input: "$(params.source_branch)"
+      #       operator: in
+      #       values: ["main"]
+      #   taskRef:
+      #     name: promote-to-prod-task
+      #     resolver: hub
+      #     params:
+      #       - name: name
+      #         value: skopeo-copy
+      #       - name: kind
+      #         value: task
+      #       - name: catalog
+      #         value: tekton
+      #       - name: version
+      #         value: "0.1"
+      #   runAfter:
+      #     - extract-version-and-registry
+      #   params:
+      #     - name: srcImageURL
+      #       value: "$(tasks.extract-version-and-registry.results.dev-image-tag-base):$(tasks.extract-version-and-registry.results.dev-version)"
+      #     - name: destImageURL
+      #       value: "$(tasks.extract-version-and-registry.results.prod-image-tag-base):$(tasks.extract-version-and-registry.results.prod-version)"
+
+      - name: promote-to-prod
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["main"]
+        taskRef:
+          name: promote-to-prod-task
+        params:
+          - name: dev-version
+            value: "$(tasks.extract-version-and-registry.results.dev-version)"
+          - name: prod-version
+            value: "$(tasks.extract-version-and-registry.results.prod-version)"
+          - name: prod_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.prod-image-tag-base)"
+          - name: dev_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.dev-image-tag-base)"
+        runAfter:
+          - extract-version-and-registry
+        workspaces:
+          - name: registry
+            workspace: registry-secret
+
+      - name: buildah-build
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["dev"]
+        params:
+          - name: dev-version
+            value: "$(tasks.extract-version-and-registry.results.dev-version)"
+          - name: prod-version
+            value: "$(tasks.extract-version-and-registry.results.prod-version)"
+          - name: image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.dev-image-tag-base)"
+        taskRef:
+          name: buildah-build-task
+        runAfter:
+          - extract-version-and-registry
+        workspaces:
+          - name: source
+            workspace: source
+          - name: registry
+            workspace: registry-secret
+    
+      - name: sync-after-promote-or-build
+        runAfter:
+          - promote-to-prod
+          - buildah-build
+        taskRef:
+          name: noop-task
+
+      - name: update-submodule
+        when:
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["main"]
+        taskRef:
+          name: update-submodule-task
+        runAfter:
+          - promote-to-prod
+        workspaces:
+          - name: source
+            workspace: source
+          - name: git-auth
+            workspace: git-auth  
+
+      - name: tag-version
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["main", "dev"]
+        taskRef:
+          name: tag-version-task
+        params:
+          - name: source-branch
+            value: "$(params.source_branch)"
+          - name: prod-version
+            value: "$(tasks.extract-version-and-registry.results.prod-version)"
+          - name: dev-version
+            value: "$(tasks.extract-version-and-registry.results.dev-version)"
+        runAfter:
+          - sync-after-promote-or-build
+        workspaces:
+          - name: source
+            workspace: source
+          - name: git-auth
+            workspace: git-auth
+
+      - name: openshift-redeploy
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["dev", "main"]
+        taskRef:
+          name: openshift-redeploy-task
+        params:
+          - name: source-branch
+            value: "$(params.source_branch)"
+          - name: prod-version
+            value: "$(tasks.extract-version-and-registry.results.prod-version)"
+          - name: dev-version
+            value: "$(tasks.extract-version-and-registry.results.dev-version)"
+          - name: prod_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.prod-image-tag-base)"
+          - name: dev_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.dev-image-tag-base)"
+        runAfter:
+          - tag-version
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: go-test-post-deploy
+        when:
+          - input: "$(params.runOptional)"
+            operator: in
+            values: ["true"]
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["dev", "main"]
+        taskRef:
+          name: go-test-post-deploy-task
+        params:
+          - name: source-branch
+            value: "$(params.source_branch)"
+          - name: prod-version
+            value: "$(tasks.extract-version-and-registry.results.prod-version)"
+          - name: dev-version
+            value: "$(tasks.extract-version-and-registry.results.dev-version)"
+          - name: prod_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.prod-image-tag-base)"
+          - name: dev_image_tag_base
+            value: "$(tasks.extract-version-and-registry.results.dev-image-tag-base)"
+        runAfter:
+          - openshift-redeploy
+        workspaces:
+          - name: source
+            workspace: source
+
+      - name: benchmark
+        when:
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["dev"]
+        continueOn:
+          errors: true
+        params:
+          - name: openshift_host
+            value: "https://api.fmaas-platform-eval.fmaas.res.ibm.com:6443"
+          - name: openshift_namespace
+            value: "hc4ai-operator-dev"
+        taskRef:
+          name: benchmark-task 
+        runAfter:
+          - go-test-post-deploy
+    
+      - name: increment-versions
+        when:
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["main"]
+        params:
+          - name: source-branch
+            value: "$(params.source_branch)"
+          - name: url
+            value: $(params.repo_url)
+        taskRef:
+          name: increment-versions-task
+        runAfter:
+          - openshift-redeploy
+        workspaces:
+          - name: source
+            workspace: source
+          - name: git-auth
+            workspace: git-auth  
+
+      - name: pipeline-complete-main
+        when:
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["main"]
+        runAfter:
+          - increment-versions
+        taskRef:
+          name: noop-task
+  
+      - name: pipeline-complete-dev
+        when:
+          - input: "$(params.source_branch)"
+            operator: in
+            values: ["dev"]
+        runAfter:
+          - benchmark
+        taskRef:
+          name: noop-task
+       
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+    - name: basic-auth
+      secret:
+        secretName: "{{ git_auth_secret }}"
+    - name: git-auth  
+      secret:
+        secretName: "git-auth-secret-ai-foundation"
+    - name: registry-secret
+      secret:
+        secretName: icr-secret
