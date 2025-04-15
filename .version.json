@@ -1,0 +1,6 @@
+{
+  "dev-version": "0.0.13",
+  "dev-registry": "us.icr.io/ibm-hc4ai-operator/vllm-sim-dev",
+  "prod-version": "0.0.12",
+  "prod-registry": "us.icr.io/ibm-hc4ai-operator/vllm-sim"
+}
