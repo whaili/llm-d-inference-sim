@@ -14,6 +14,8 @@
 
 # Makefile for the vllm-sim project
 
+CONTAINER_RUNTIME ?= docker
+
 PACKAGE_VLLM_SIM = github.com/neuralmagic/vllm-sim/cmd/vllm-sim
 VLLM_SIM_NAME = vllm-sim/vllm-sim
 VLLM_SIM_TAG ?= 0.0.2
@@ -28,5 +30,5 @@ build-vllm-sim-linux:
 
 .PHONY: build-vllm-sim-image
 build-vllm-sim-image: build-vllm-sim-linux
-	docker build --file build/vllm-sim.Dockerfile --tag ${VLLM_SIM_NAME}:${VLLM_SIM_TAG} ./bin/linux
+	$(CONTAINER_RUNTIME) build --file build/vllm-sim.Dockerfile --tag ${VLLM_SIM_NAME}:${VLLM_SIM_TAG} ./bin/linux
 
