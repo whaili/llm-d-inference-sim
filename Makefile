@@ -26,7 +26,7 @@ build-vllm-sim:
 
 .PHONY: build-vllm-sim-linux
 build-vllm-sim-linux:
-	GOOS=linux GOARCH=amd64 go build -o bin/linux/ ${PACKAGE_VLLM_SIM}
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux/ ${PACKAGE_VLLM_SIM}
 
 .PHONY: build-vllm-sim-image
 build-vllm-sim-image: build-vllm-sim-linux
