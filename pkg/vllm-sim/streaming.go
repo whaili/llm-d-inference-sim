@@ -78,8 +78,16 @@ func (s *VllmSimulator) sendStreamingResponse(isChatCompletion bool, ctx *fastht
 		}
 
 		// finish sse events stream
-		fmt.Fprint(w, "data: [DONE]\n\n")
-		w.Flush()
+		_, err := fmt.Fprint(w, "data: [DONE]\n\n")
+		if err != nil {
+			ctx.Error("fprint failed, "+err.Error(), fasthttp.StatusInternalServerError)
+			return
+		}
+		err = w.Flush()
+		if err != nil {
+			ctx.Error("flush failed, "+err.Error(), fasthttp.StatusInternalServerError)
+			return
+		}
 
 		s.responseSentCallback(model)
 	})
@@ -130,8 +138,14 @@ func (s *VllmSimulator) sendChunk(isChatCompletion bool, w *bufio.Writer, creati
 		return err
 	}
 
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	w.Flush()
+	_, err = fmt.Fprintf(w, "data: %s\n\n", data)
+	if err != nil {
+		return err
+	}
+	err = w.Flush()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
