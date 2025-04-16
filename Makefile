@@ -37,7 +37,7 @@ SHELL := /usr/bin/env bash
 PROJECT_NAME ?= vllm-sim
 DEV_VERSION ?= 0.0.1
 PROD_VERSION ?= 0.0.0
-IMAGE_TAG_BASE ?= us.icr.io/ibm-hc4ai-operator/$(PROJECT_NAME)
+IMAGE_TAG_BASE ?= quay.io/vllm-d/$(PROJECT_NAME)
 IMG = $(IMAGE_TAG_BASE):$(DEV_VERSION)
 NAMESPACE ?= hc4ai-operator
 
@@ -255,7 +255,7 @@ load-version-json: check-jq
 	  export DEV_VERSION; \
 	  export PROD_VERSION; \
 	fi && \
-	CURRENT_DEFAULT="us.icr.io/ibm-hc4ai-operator/$(PROJECT_NAME)"; \
+	CURRENT_DEFAULT="quay.io/vllm-d/$(PROJECT_NAME)"; \
 	if [ "$(IMAGE_TAG_BASE)" = "$$CURRENT_DEFAULT" ]; then \
 	  IMAGE_TAG_BASE=$$(jq -r '."dev-registry"' .version.json); \
 	  echo "✔ Loaded IMAGE_TAG_BASE from .version.json: $$IMAGE_TAG_BASE"; \

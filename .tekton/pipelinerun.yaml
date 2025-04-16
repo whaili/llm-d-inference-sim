@@ -412,4 +412,4 @@ spec:
         secretName: "git-auth-secret-ai-foundation"
     - name: registry-secret
       secret:
-        secretName: icr-secret
+        secretName: quay-secret

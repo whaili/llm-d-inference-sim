@@ -16,5 +16,5 @@ spec:
       serviceAccountName: operator-controller-manager
       containers:
         - name: cmd
-          image: us.icr.io/ibm-hc4ai-operator/placeholder:placeholder
+          image: quay.io/vllm-d/placeholder:placeholder
           imagePullPolicy: Always
