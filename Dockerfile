@@ -3,8 +3,6 @@ FROM quay.io/projectquay/golang:1.24 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-ENV GOPROXY=https://goproxy.io,direct
-
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -31,6 +29,6 @@ WORKDIR /
 COPY --from=builder /workspace/bin/vllm-sim /app/vllm-sim
 USER 65532:65532
 
-CMD ["sleep", "infinity"]
+ENTRYPOINT ["/app/vllm-sim"]
 
 
