@@ -43,7 +43,9 @@ IMAGE_TAG_BASE ?= quay.io/vllm-d/$(PROJECT_NAME)
 IMG = $(IMAGE_TAG_BASE):$(DEV_VERSION)
 NAMESPACE ?= hc4ai-operator
 
-CONTAINER_TOOL := $(shell command -v docker >/dev/null 2>&1 && echo docker || command -v podman >/dev/null 2>&1 && echo podman || echo "")
+
+# CONTAINER_TOOL := $(shell command -v docker >/dev/null 2>&1 && echo docker || command -v podman >/dev/null 2>&1 && echo podman || echo "")
+CONTAINER_TOOL ?= docker
 BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo $(CONTAINER_TOOL))
 PLATFORMS ?= linux/amd64 # linux/arm64 # linux/s390x,linux/ppc64le
 
@@ -251,7 +253,7 @@ extract-version-info: check-jq
 load-version-json: check-jq
 	@if [ "$(DEV_VERSION)" = "0.0.1" ]; then \
 	  DEV_VERSION=$$(jq -r '."dev-version"' .version.json); \
-	  PROD_VERSION=$$(jq -r '."dev-version"' .version.json); \
+	  PROD_VERSION=$$(jq -r '."prod-version"' .version.json); \
 	  echo "✔ Loaded DEV_VERSION from .version.json: $$DEV_VERSION"; \
 	  echo "✔ Loaded PROD_VERSION from .version.json: $$PROD_VERSION"; \
 	  export DEV_VERSION; \
