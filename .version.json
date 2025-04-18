@@ -1,6 +1,6 @@
 {
-  "dev-version": "0.0.1",
-  "dev-registry": "quay.io/vllm-d/vllm-sim-dev",
-  "prod-version": "0.0.0",
-  "prod-registry": "quay.io/vllm-d/vllm-sim"
+    "dev-version": "0.0.2",
+    "dev-registry": "quay.io/vllm-d/vllm-sim-dev",
+    "prod-version": "0.0.1",
+    "prod-registry": "quay.io/vllm-d/vllm-sim"
 }
