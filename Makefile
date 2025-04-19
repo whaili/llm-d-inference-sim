@@ -367,3 +367,7 @@ print-namespace: ## Print the current namespace
 .PHONY: print-project-name
 print-project-name: ## Print the current project name
 	@echo "$(PROJECT_NAME)"
+
+.PHONY: install-hooks
+install-hooks: ## Install git hooks
+	git config core.hooksPath hooks
