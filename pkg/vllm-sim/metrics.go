@@ -21,6 +21,7 @@ package vllmsim
 import (
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	vllmapi "github.com/neuralmagic/vllm-sim/pkg/vllm-api"
@@ -131,6 +132,7 @@ func (s *VllmSimulator) reportLoras() {
 
 // reportRequests sets information about running completion requests
 func (s *VllmSimulator) reportRequests() {
+	nRunningReqs := atomic.LoadInt64(&(s.nRunningReqs))
 	s.runningRequests.WithLabelValues(
-		s.model).Set(float64(s.nRunningReqs))
+		s.model).Set(float64(nRunningReqs))
 }
