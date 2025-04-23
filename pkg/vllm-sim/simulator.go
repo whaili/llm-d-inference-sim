@@ -317,8 +317,12 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 
 // decrease model usage reference number
 func (s *VllmSimulator) responseSentCallback(model string) {
+
+	atomic.AddInt64(&(s.nRunningReqs), -1)
+	s.reportRequests()
+
 	if model == s.model {
-		// this is base model - do nothing
+		// this is base model - do not continue
 		return
 	}
 
@@ -341,8 +345,6 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 
 	s.reportLoras()
 
-	atomic.AddInt64(&(s.nRunningReqs), -1)
-	s.reportRequests()
 }
 
 // sendCompletionError sends an error response for the curent completion request
