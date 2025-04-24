@@ -14,6 +14,8 @@ spec:
   workspaces:
     - name: source
     - name: registry
+    - name: container-storage
+      mountPath: /var/lib/containers
   steps:
     # - name: setup-qemu
     #   image: us.icr.io/ibm-hc4ai-operator/qemu-user-static:latest
@@ -33,7 +35,7 @@ spec:
         privileged: true
       env:
         - name: STORAGE_DRIVER
-          value: vfs
+          value: overlay
       script: |
         #!/bin/sh
         set -e
