@@ -94,7 +94,7 @@ buildah-build: check-builder load-version-json ## Build and push image (multi-ar
 	  echo "🔧 Buildah detected: Performing multi-arch build..."; \
 	  for arch in amd64; do \
 	    echo "📦 Building for architecture: $$arch"; \
-	    buildah build --arch=$$arch --os=linux -t $(IMG)-$$arch . || exit 1; \
+	    buildah build --arch=$$arch --os=linux --layers -t $(IMG)-$$arch . || exit 1; \
 	    echo "🚀 Pushing image: $(IMG)-$$arch"; \
 	    buildah push $(IMG)-$$arch docker://$(IMG)-$$arch || exit 1; \
 	  done; \
