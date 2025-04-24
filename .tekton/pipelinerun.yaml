@@ -610,7 +610,7 @@ spec:
   workspaces:
     - name: container-storage
       persistentVolumeClaim:
-        claimName: buildah-cache-pvc
+        claimName: buildah-cache-pvc6
     - name: source
       volumeClaimTemplate:
         spec:
