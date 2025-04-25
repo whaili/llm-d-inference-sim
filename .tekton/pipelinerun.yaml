@@ -326,8 +326,8 @@ spec:
             workspace: source
           - name: registry
             workspace: registry-secret
-          - name: container-storage
-            workspace: container-storage
+          # - name: container-storage
+          #   workspace: container-storage
 
       - name: vulnerability-scan
         when:
@@ -608,10 +608,10 @@ spec:
           name: noop-task
        
   workspaces:
-    - name: container-storage
-      persistentVolumeClaim:
-        claimName: build-cache-cos
-        # claimName: buildah-cache-pvc6
+    # - name: container-storage
+    #   persistentVolumeClaim:
+    #     claimName: build-cache-cos
+    #     # claimName: buildah-cache-pvc6
     - name: source
       volumeClaimTemplate:
         spec:
