@@ -130,9 +130,16 @@ func (s *VllmSimulator) reportLoras() {
 		"").Set(float64(time.Now().Unix()))
 }
 
-// reportRequests sets information about running completion requests
-func (s *VllmSimulator) reportRequests() {
+// reportRunningRequests sets information about running completion requests
+func (s *VllmSimulator) reportRunningRequests() {
 	nRunningReqs := atomic.LoadInt64(&(s.nRunningReqs))
 	s.runningRequests.WithLabelValues(
 		s.model).Set(float64(nRunningReqs))
+}
+
+// reportWaitingRequests sets information about waiting completion requests
+func (s *VllmSimulator) reportWaitingRequests() {
+	nWaitingReqs := atomic.LoadInt64(&(s.nWaitingReqs))
+	s.waitingRequests.WithLabelValues(
+		s.model).Set(float64(nWaitingReqs))
 }

@@ -41,7 +41,7 @@ import (
 func New(logger logr.Logger) *VllmSimulator {
 	return &VllmSimulator{
 		logger:  logger,
-		reqChan: make(chan *completionReqCtx),
+		reqChan: make(chan *completionReqCtx, 1000),
 	}
 }
 
@@ -267,6 +267,8 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		wg:               &wg,
 	}
 	s.reqChan <- reqCtx
+	atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
+	s.reportWaitingRequests()
 	wg.Wait()
 }
 
@@ -281,6 +283,9 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 				s.logger.Info("reqProcessingWorker worker exiting: reqChan closed")
 				return
 			}
+			atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
+			s.reportWaitingRequests()
+
 			req := reqCtx.completionReq
 			model := req.getModel()
 			if s.isLora(model) {
@@ -301,7 +306,7 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 				s.reportLoras()
 			}
 			atomic.AddInt64(&(s.nRunningReqs), 1)
-			s.reportRequests()
+			s.reportRunningRequests()
 
 			responseTxt := req.createResponseText(s.mode)
 
@@ -319,7 +324,7 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 func (s *VllmSimulator) responseSentCallback(model string) {
 
 	atomic.AddInt64(&(s.nRunningReqs), -1)
-	s.reportRequests()
+	s.reportRunningRequests()
 
 	if model == s.model {
 		// this is base model - do not continue

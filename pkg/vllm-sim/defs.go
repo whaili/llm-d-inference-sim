@@ -63,6 +63,8 @@ type VllmSimulator struct {
 	maxRunningReqs int64
 	// nRunningReqs ithe the number of inference requests that are currently being processed
 	nRunningReqs int64
+	// nWaitingReqs ithe the number of inference requests that are waiting to be processed
+	nWaitingReqs int64
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
 	// runningRequests is prometheus gauge
