@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -58,6 +59,9 @@ type VllmSimulator struct {
 	runningLoras sync.Map
 	// waitingLoras will represent collection of loras defined in requests in the queue - Not implemented yet
 	waitingLoras sync.Map
+	// maxRunningReqs defines the maximum number of inference requests that could be processed at the same time
+	maxRunningReqs int64
+	// nRunningReqs ithe the number of inference requests that are currently being processed
 	nRunningReqs int64
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
@@ -67,6 +71,8 @@ type VllmSimulator struct {
 	waitingRequests *prometheus.GaugeVec
 	// kvCacheUsagePercentage is prometheus gauge
 	kvCacheUsagePercentage *prometheus.GaugeVec
+	// channel for requeasts to be passed to workers
+	reqChan chan *completionReqCtx
 }
 
 // baseResponseChoice contains base completion response's choice related information
@@ -115,6 +121,13 @@ type completionRequest interface {
 	isStream() bool
 	// getModel returns model name as defined in the request
 	getModel() string
+}
+
+type completionReqCtx struct {
+	completionReq    completionRequest
+	httpReqCtx       *fasthttp.RequestCtx
+	isChatCompletion bool
+	wg               *sync.WaitGroup
 }
 
 // v1/chat/completion

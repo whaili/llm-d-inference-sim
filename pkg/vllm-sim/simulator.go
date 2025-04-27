@@ -18,10 +18,12 @@ limitations under the License.
 package vllmsim
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,12 +40,13 @@ import (
 // New creates a new VllmSimulator instance with the given logger
 func New(logger logr.Logger) *VllmSimulator {
 	return &VllmSimulator{
-		logger: logger,
+		logger:  logger,
+		reqChan: make(chan *completionReqCtx),
 	}
 }
 
 // Start starts the simulator
-func (s *VllmSimulator) Start() error {
+func (s *VllmSimulator) Start(ctx context.Context) error {
 	// parse command line parameters
 	err := s.parseCommandParams()
 	if err != nil {
@@ -56,6 +59,10 @@ func (s *VllmSimulator) Start() error {
 		return err
 	}
 
+	// run request processing workers
+	for i := 1; i <= int(s.maxRunningReqs); i++ {
+		go s.reqProcessingWorker(ctx, i)
+	}
 	// start the http server
 	return s.startServer()
 }
@@ -71,6 +78,7 @@ func (s *VllmSimulator) parseCommandParams() error {
 	pflag.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
 	pflag.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
 	pflag.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
+	pflag.Int64Var(&s.maxRunningReqs, "max-running-requests", 5, "Maximum number of inference requests that could be processed at the same time (parameter to simulate requests waiting queue)")
 
 	pflag.Parse()
 
@@ -250,39 +258,71 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		return
 	}
 
-	if s.isLora(model) {
-		// if current request's model is LoRA, add it to the list of running loras
-		value, ok := s.runningLoras.Load(model)
-		intValue := 0
-
-		if !ok {
-			s.logger.Info("Create referense counter", "model", model)
-			intValue = 0
-		} else {
-			intValue = value.(int)
-		}
-		s.runningLoras.Store(model, intValue+1)
-		s.logger.Info("Update LoRA referense counter", "model", model, "old value", intValue, "new value", intValue+1)
-
-		// TODO - check if thie request went to the waiting queue - add it to waiting map
-		s.reportLoras()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	reqCtx := &completionReqCtx{
+		completionReq:    vllmReq,
+		httpReqCtx:       ctx,
+		isChatCompletion: isChatCompletion,
+		wg:               &wg,
 	}
-	atomic.AddInt64(&(s.nRunningReqs), 1)
-	s.reportRequests()
+	s.reqChan <- reqCtx
+	wg.Wait()
+}
 
-	responseTxt := vllmReq.createResponseText(s.mode)
+func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("reqProcessingWorker stopped:", "worker id", id)
+			return
+		case reqCtx, ok := <-s.reqChan:
+			if !ok {
+				s.logger.Info("reqProcessingWorker worker exiting: reqChan closed")
+				return
+			}
+			req := reqCtx.completionReq
+			model := req.getModel()
+			if s.isLora(model) {
+				// if current request's model is LoRA, add it to the list of running loras
+				value, ok := s.runningLoras.Load(model)
+				intValue := 0
 
-	if vllmReq.isStream() {
-		s.sendStreamingResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
-	} else {
-		s.sendResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
+				if !ok {
+					s.logger.Info("Create referense counter", "model", model)
+					intValue = 0
+				} else {
+					intValue = value.(int)
+				}
+				s.runningLoras.Store(model, intValue+1)
+				s.logger.Info("Update LoRA referense counter", "model", model, "old value", intValue, "new value", intValue+1)
+
+				// TODO - check if thie request went to the waiting queue - add it to waiting map
+				s.reportLoras()
+			}
+			atomic.AddInt64(&(s.nRunningReqs), 1)
+			s.reportRequests()
+
+			responseTxt := req.createResponseText(s.mode)
+
+			if req.isStream() {
+				s.sendStreamingResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+			} else {
+				s.sendResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+			}
+			reqCtx.wg.Done()
+		}
 	}
 }
 
 // decrease model usage reference number
 func (s *VllmSimulator) responseSentCallback(model string) {
+
+	atomic.AddInt64(&(s.nRunningReqs), -1)
+	s.reportRequests()
+
 	if model == s.model {
-		// this is base model - do nothing
+		// this is base model - do not continue
 		return
 	}
 
@@ -305,8 +345,6 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 
 	s.reportLoras()
 
-	atomic.AddInt64(&(s.nRunningReqs), -1)
-	s.reportRequests()
 }
 
 // sendCompletionError sends an error response for the curent completion request

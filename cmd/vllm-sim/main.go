@@ -31,12 +31,12 @@ func main() {
 	// setup logger and context with graceful shutdown
 	logger := klog.Background()
 	ctx := klog.NewContext(context.Background(), logger)
-	_ = signals.SetupSignalHandler(ctx)
+	ctx = signals.SetupSignalHandler(ctx)
 
 	logger.Info("Start vllm simulator")
 
 	vllmSim := vllmsim.New(logger)
-	err := vllmSim.Start()
+	err := vllmSim.Start(ctx)
 
 	if err != nil {
 		logger.Error(err, "VLLM simulator failed")

@@ -81,6 +81,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `inter-token-latency`: the time to 'generate' each additional token (in milliseconds), optional, by default zero
 - `max-loras`: maximum number of LoRAs in a single batch, optional, default is one
 - `max-cpu-loras`: maximum number of LoRAs to store in CPU memory, optional, must be >= than max_loras, default is max_loras
+- `max-running-requests`: maximum number of inference requests that could be processed at the same time
 
 
 ## Working with docker image
