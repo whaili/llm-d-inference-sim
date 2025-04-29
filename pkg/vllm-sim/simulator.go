@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,8 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
+
+const vLLMDefaultPort = 8000
 
 // New creates a new VllmSimulator instance with the given logger
 func New(logger logr.Logger) *VllmSimulator {
@@ -63,24 +66,32 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	for i := 1; i <= int(s.maxRunningReqs); i++ {
 		go s.reqProcessingWorker(ctx, i)
 	}
+	listener, err := s.newListener()
+	if err != nil {
+		return err
+	}
+
 	// start the http server
-	return s.startServer()
+	return s.startServer(listener)
 }
 
 // parseCommandParams parses and validates command line parameters
 func (s *VllmSimulator) parseCommandParams() error {
-	pflag.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
-	pflag.IntVar(&s.port, "port", 0, "Port")
-	pflag.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
-	pflag.IntVar(&s.timeToFirstToken, "time-to-first-token", 0, "Time to first token (in milliseconds)")
-	pflag.StringVar(&s.model, "model", "", "Currently 'loaded' model")
+	f := pflag.NewFlagSet("vllm-sim flags", pflag.ExitOnError)
+	f.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
+	f.IntVar(&s.port, "port", vLLMDefaultPort, "Port")
+	f.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
+	f.IntVar(&s.timeToFirstToken, "time-to-first-token", 0, "Time to first token (in milliseconds)")
+	f.StringVar(&s.model, "model", "", "Currently 'loaded' model")
 	var lorasStr string
-	pflag.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
-	pflag.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
-	pflag.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
-	pflag.Int64Var(&s.maxRunningReqs, "max-running-requests", 5, "Maximum number of inference requests that could be processed at the same time (parameter to simulate requests waiting queue)")
+	f.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
+	f.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
+	f.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
+	f.Int64Var(&s.maxRunningReqs, "max-running-requests", 5, "Maximum number of inference requests that could be processed at the same time (parameter to simulate requests waiting queue)")
 
-	pflag.Parse()
+	if err := f.Parse(os.Args[1:]); err != nil {
+		return err
+	}
 
 	loras := strings.Split(lorasStr, ",")
 	for _, lora := range loras {
@@ -120,8 +131,17 @@ func (s *VllmSimulator) parseCommandParams() error {
 	return nil
 }
 
+func (s *VllmSimulator) newListener() (net.Listener, error) {
+	s.logger.Info("Server starting", "port", s.port)
+	listener, err := net.Listen("tcp4", fmt.Sprintf(":%d", s.port))
+	if err != nil {
+		return nil, err
+	}
+	return listener, nil
+}
+
 // startServer starts http server on port defined in command line
-func (s *VllmSimulator) startServer() error {
+func (s *VllmSimulator) startServer(listener net.Listener) error {
 	r := fasthttprouter.New()
 
 	// support completion APIs
@@ -141,11 +161,6 @@ func (s *VllmSimulator) startServer() error {
 		Logger:       s,
 	}
 
-	s.logger.Info("Server starting", "port", s.port)
-	listener, err := net.Listen("tcp4", fmt.Sprintf(":%d", s.port))
-	if err != nil {
-		return err
-	}
 	defer func() {
 		if err := listener.Close(); err != nil {
 			s.logger.Error(err, "server listener close failed")
@@ -308,12 +323,22 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 			atomic.AddInt64(&(s.nRunningReqs), 1)
 			s.reportRunningRequests()
 
-			responseTxt := req.createResponseText(s.mode)
-
-			if req.isStream() {
-				s.sendStreamingResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+			responseTxt, err := req.createResponseText(s.mode)
+			if err != nil {
+				prefix := ""
+				if reqCtx.isChatCompletion {
+					prefix = "failed to create chat response"
+				} else {
+					prefix = "failed to create text response"
+				}
+				s.logger.Error(err, prefix)
+				reqCtx.httpReqCtx.Error(prefix+err.Error(), fasthttp.StatusBadRequest)
 			} else {
-				s.sendResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+				if req.isStream() {
+					s.sendStreamingResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+				} else {
+					s.sendResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+				}
 			}
 			reqCtx.wg.Done()
 		}
