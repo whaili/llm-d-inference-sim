@@ -19,10 +19,12 @@ limitations under the License.
 package vllmsim
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -44,7 +46,7 @@ type VllmSimulator struct {
 	interTokenLatency int
 	// port defines on which port the simulator runs
 	port int
-	// mode defenes the simulator response generation mode, valid values: echo, random
+	// mode defines the simulator response generation mode, valid values: echo, random
 	mode string
 	// model defines the current base model name
 	model string
@@ -58,7 +60,12 @@ type VllmSimulator struct {
 	runningLoras sync.Map
 	// waitingLoras will represent collection of loras defined in requests in the queue - Not implemented yet
 	waitingLoras sync.Map
+	// maxRunningReqs defines the maximum number of inference requests that could be processed at the same time
+	maxRunningReqs int64
+	// nRunningReqs ithe the number of inference requests that are currently being processed
 	nRunningReqs int64
+	// nWaitingReqs ithe the number of inference requests that are waiting to be processed
+	nWaitingReqs int64
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
 	// runningRequests is prometheus gauge
@@ -67,6 +74,8 @@ type VllmSimulator struct {
 	waitingRequests *prometheus.GaugeVec
 	// kvCacheUsagePercentage is prometheus gauge
 	kvCacheUsagePercentage *prometheus.GaugeVec
+	// channel for requeasts to be passed to workers
+	reqChan chan *completionReqCtx
 }
 
 // baseResponseChoice contains base completion response's choice related information
@@ -110,11 +119,18 @@ func (b *baseCompletionRequest) getModel() string {
 // completionRequest interface representing both completion request types (text and chat)
 type completionRequest interface {
 	// createResponseText creates and returns response payload based on this request
-	createResponseText(mode string) string
+	createResponseText(mode string) (string, error)
 	// isStream returns boolean that defines is response should be streamed
 	isStream() bool
 	// getModel returns model name as defined in the request
 	getModel() string
+}
+
+type completionReqCtx struct {
+	completionReq    completionRequest
+	httpReqCtx       *fasthttp.RequestCtx
+	isChatCompletion bool
+	wg               *sync.WaitGroup
 }
 
 // v1/chat/completion
@@ -131,6 +147,18 @@ type chatCompletionRequest struct {
 	baseCompletionRequest
 	// Messages list of request's Messages
 	Messages []message `json:"messages"`
+
+	// The maximum number of tokens that can be generated in the chat
+	// completion. This value can be used to control costs for text
+	// generated via API.
+	// This value is now deprecated in favor of max_completion_tokens
+	// and is not compatible with o1 series models.
+	MaxTokens *int64 `json:"max_tokens"`
+
+	// An upper bound for the number of tokens that can be
+	// generated for a completion, including visible output
+	// tokens and reasoning tokens.
+	MaxCompletionTokens *int64 `json:"max_completion_tokens"`
 }
 
 // chatCompletionResponse defines structure of /chat/completion response
@@ -153,9 +181,13 @@ type textCompletionRequest struct {
 	baseCompletionRequest
 	// Prompt defines request's content
 	Prompt string `json:"prompt"`
-	// TODO - do we want to support max tokens?
-	// MaxTokens is a maximum number of tokens in response
-	MaxTokens int `json:"max_tokens"`
+
+	// The maximum number of [tokens](/tokenizer) that can be generated in the
+	// completion.
+	//
+	// The token count of your prompt plus `max_tokens` cannot exceed the model's
+	// context length.
+	MaxTokens *int64 `json:"max_tokens"`
 }
 
 // textCompletionResponse defines structure of /completion response
@@ -189,21 +221,48 @@ type chatRespChunkChoice struct {
 	Delta message `json:"delta"`
 }
 
-// createResponseText creates response text for the given chat completion request and mode
-func (req chatCompletionRequest) createResponseText(mode string) string {
-	if mode == modeEcho {
-		return req.getLastUserMsg()
+// returns the max. tokens or error if incorrect
+func getMaxTokens(maxCompletionTokens *int64, maxTokens *int64) (*int64, error) {
+	var typeToken string
+	var tokens *int64
+	// if both arguments are passed,
+	// use maxCompletionTokens
+	// as in the real vllm
+	if maxCompletionTokens != nil {
+		tokens = maxCompletionTokens
+		typeToken = "max_completion_tokens"
+	} else if maxTokens != nil {
+		tokens = maxTokens
+		typeToken = "max_tokens"
 	}
-	return getRandomResponseText()
+	if tokens != nil && *tokens < 1 {
+		return nil, fmt.Errorf("%s must be at least 1, got %d", typeToken, *tokens)
+	}
+	return tokens, nil
+}
+
+// createResponseText creates response text for the given chat completion request and mode
+func (req chatCompletionRequest) createResponseText(mode string) (string, error) {
+	maxTokens, err := getMaxTokens(req.MaxCompletionTokens, req.MaxTokens)
+	if err != nil {
+		return "", err
+	}
+	if mode == modeEcho {
+		return getResponseText(maxTokens, req.getLastUserMsg()), nil
+	}
+	return getRandomResponseText(maxTokens), nil
 }
 
 // createResponseText creates response text for the given text completion request and mode
-func (req textCompletionRequest) createResponseText(mode string) string {
-	if mode == modeEcho {
-		return req.Prompt
-	} else {
-		return getRandomResponseText()
+func (req textCompletionRequest) createResponseText(mode string) (string, error) {
+	maxTokens, err := getMaxTokens(nil, req.MaxTokens)
+	if err != nil {
+		return "", err
 	}
+	if mode == modeEcho {
+		return getResponseText(maxTokens, req.Prompt), nil
+	}
+	return getRandomResponseText(maxTokens), nil
 }
 
 // getLastUserMsg returns last message from this request's messages with user role,

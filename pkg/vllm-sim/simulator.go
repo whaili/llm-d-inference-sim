@@ -18,10 +18,13 @@ limitations under the License.
 package vllmsim
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,15 +38,18 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
+const vLLMDefaultPort = 8000
+
 // New creates a new VllmSimulator instance with the given logger
 func New(logger logr.Logger) *VllmSimulator {
 	return &VllmSimulator{
-		logger: logger,
+		logger:  logger,
+		reqChan: make(chan *completionReqCtx, 1000),
 	}
 }
 
 // Start starts the simulator
-func (s *VllmSimulator) Start() error {
+func (s *VllmSimulator) Start(ctx context.Context) error {
 	// parse command line parameters
 	err := s.parseCommandParams()
 	if err != nil {
@@ -56,23 +62,36 @@ func (s *VllmSimulator) Start() error {
 		return err
 	}
 
+	// run request processing workers
+	for i := 1; i <= int(s.maxRunningReqs); i++ {
+		go s.reqProcessingWorker(ctx, i)
+	}
+	listener, err := s.newListener()
+	if err != nil {
+		return err
+	}
+
 	// start the http server
-	return s.startServer()
+	return s.startServer(listener)
 }
 
 // parseCommandParams parses and validates command line parameters
 func (s *VllmSimulator) parseCommandParams() error {
-	pflag.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
-	pflag.IntVar(&s.port, "port", 0, "Port")
-	pflag.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
-	pflag.IntVar(&s.timeToFirstToken, "time-to-first-token", 0, "Time to first token (in milliseconds)")
-	pflag.StringVar(&s.model, "model", "", "Currently 'loaded' model")
+	f := pflag.NewFlagSet("vllm-sim flags", pflag.ExitOnError)
+	f.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
+	f.IntVar(&s.port, "port", vLLMDefaultPort, "Port")
+	f.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
+	f.IntVar(&s.timeToFirstToken, "time-to-first-token", 0, "Time to first token (in milliseconds)")
+	f.StringVar(&s.model, "model", "", "Currently 'loaded' model")
 	var lorasStr string
-	pflag.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
-	pflag.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
-	pflag.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
+	f.StringVar(&lorasStr, "lora", "", "List of LoRA adapters, separated by comma")
+	f.IntVar(&s.maxLoras, "max-loras", 1, "Maximum number of LoRAs in a single batch")
+	f.IntVar(&s.maxCpuLoras, "max-cpu-loras", 0, "Maximum number of LoRAs to store in CPU memory")
+	f.Int64Var(&s.maxRunningReqs, "max-running-requests", 5, "Maximum number of inference requests that could be processed at the same time (parameter to simulate requests waiting queue)")
 
-	pflag.Parse()
+	if err := f.Parse(os.Args[1:]); err != nil {
+		return err
+	}
 
 	loras := strings.Split(lorasStr, ",")
 	for _, lora := range loras {
@@ -112,8 +131,17 @@ func (s *VllmSimulator) parseCommandParams() error {
 	return nil
 }
 
+func (s *VllmSimulator) newListener() (net.Listener, error) {
+	s.logger.Info("Server starting", "port", s.port)
+	listener, err := net.Listen("tcp4", fmt.Sprintf(":%d", s.port))
+	if err != nil {
+		return nil, err
+	}
+	return listener, nil
+}
+
 // startServer starts http server on port defined in command line
-func (s *VllmSimulator) startServer() error {
+func (s *VllmSimulator) startServer(listener net.Listener) error {
 	r := fasthttprouter.New()
 
 	// support completion APIs
@@ -133,11 +161,6 @@ func (s *VllmSimulator) startServer() error {
 		Logger:       s,
 	}
 
-	s.logger.Info("Server starting", "port", s.port)
-	listener, err := net.Listen("tcp4", fmt.Sprintf(":%d", s.port))
-	if err != nil {
-		return err
-	}
 	defer func() {
 		if err := listener.Close(); err != nil {
 			s.logger.Error(err, "server listener close failed")
@@ -250,39 +273,86 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		return
 	}
 
-	if s.isLora(model) {
-		// if current request's model is LoRA, add it to the list of running loras
-		value, ok := s.runningLoras.Load(model)
-		intValue := 0
-
-		if !ok {
-			s.logger.Info("Create referense counter", "model", model)
-			intValue = 0
-		} else {
-			intValue = value.(int)
-		}
-		s.runningLoras.Store(model, intValue+1)
-		s.logger.Info("Update LoRA referense counter", "model", model, "old value", intValue, "new value", intValue+1)
-
-		// TODO - check if thie request went to the waiting queue - add it to waiting map
-		s.reportLoras()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	reqCtx := &completionReqCtx{
+		completionReq:    vllmReq,
+		httpReqCtx:       ctx,
+		isChatCompletion: isChatCompletion,
+		wg:               &wg,
 	}
-	atomic.AddInt64(&(s.nRunningReqs), 1)
-	s.reportRequests()
+	s.reqChan <- reqCtx
+	atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
+	s.reportWaitingRequests()
+	wg.Wait()
+}
 
-	responseTxt := vllmReq.createResponseText(s.mode)
+func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("reqProcessingWorker stopped:", "worker id", id)
+			return
+		case reqCtx, ok := <-s.reqChan:
+			if !ok {
+				s.logger.Info("reqProcessingWorker worker exiting: reqChan closed")
+				return
+			}
+			atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
+			s.reportWaitingRequests()
 
-	if vllmReq.isStream() {
-		s.sendStreamingResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
-	} else {
-		s.sendResponse(isChatCompletion, ctx, responseTxt, vllmReq.getModel())
+			req := reqCtx.completionReq
+			model := req.getModel()
+			if s.isLora(model) {
+				// if current request's model is LoRA, add it to the list of running loras
+				value, ok := s.runningLoras.Load(model)
+				intValue := 0
+
+				if !ok {
+					s.logger.Info("Create referense counter", "model", model)
+					intValue = 0
+				} else {
+					intValue = value.(int)
+				}
+				s.runningLoras.Store(model, intValue+1)
+				s.logger.Info("Update LoRA referense counter", "model", model, "old value", intValue, "new value", intValue+1)
+
+				// TODO - check if thie request went to the waiting queue - add it to waiting map
+				s.reportLoras()
+			}
+			atomic.AddInt64(&(s.nRunningReqs), 1)
+			s.reportRunningRequests()
+
+			responseTxt, err := req.createResponseText(s.mode)
+			if err != nil {
+				prefix := ""
+				if reqCtx.isChatCompletion {
+					prefix = "failed to create chat response"
+				} else {
+					prefix = "failed to create text response"
+				}
+				s.logger.Error(err, prefix)
+				reqCtx.httpReqCtx.Error(prefix+err.Error(), fasthttp.StatusBadRequest)
+			} else {
+				if req.isStream() {
+					s.sendStreamingResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+				} else {
+					s.sendResponse(reqCtx.isChatCompletion, reqCtx.httpReqCtx, responseTxt, model)
+				}
+			}
+			reqCtx.wg.Done()
+		}
 	}
 }
 
 // decrease model usage reference number
 func (s *VllmSimulator) responseSentCallback(model string) {
+
+	atomic.AddInt64(&(s.nRunningReqs), -1)
+	s.reportRunningRequests()
+
 	if model == s.model {
-		// this is base model - do nothing
+		// this is base model - do not continue
 		return
 	}
 
@@ -305,8 +375,6 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 
 	s.reportLoras()
 
-	atomic.AddInt64(&(s.nRunningReqs), -1)
-	s.reportRequests()
 }
 
 // sendCompletionError sends an error response for the curent completion request

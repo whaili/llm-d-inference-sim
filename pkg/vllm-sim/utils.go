@@ -18,6 +18,7 @@ package vllmsim
 
 import (
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -36,7 +37,43 @@ var chatCompletionFakeResponses = []string{
 }
 
 // getRandomResponseText returns random response text from the pre-defined list of responses
-func getRandomResponseText() string {
+// considering max completion tokens if it is not nil
+func getRandomResponseText(max_completion_tokens *int64) string {
 	index := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(chatCompletionFakeResponses))
-	return chatCompletionFakeResponses[index]
+	text := chatCompletionFakeResponses[index]
+
+	return getResponseText(max_completion_tokens, text)
+}
+
+// getResponseText returns response text, from a given text
+// considering max completion tokens if it is not nil
+func getResponseText(max_completion_tokens *int64, text string) string {
+	// should not happen
+	if max_completion_tokens != nil && *max_completion_tokens <= 0 {
+		return ""
+	}
+
+	// no max completion tokens, return entire text
+	if max_completion_tokens == nil {
+		return text
+	}
+	// create tokens from text, splitting by spaces
+	tokens := strings.Fields(text)
+
+	// return entire text
+	if *max_completion_tokens >= int64(len(tokens)) {
+		return text
+	}
+	// return truncated text
+	return strings.Join(tokens[0:*max_completion_tokens], " ")
+}
+
+// Given a partial string, access the full string
+func getFullTextFromPartialString(partial string) string {
+	for _, str := range chatCompletionFakeResponses {
+		if strings.Contains(str, partial) {
+			return str
+		}
+	}
+	return ""
 }

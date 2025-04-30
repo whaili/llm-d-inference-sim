@@ -39,7 +39,7 @@ SHELL := /usr/bin/env bash
 PROJECT_NAME ?= vllm-sim
 DEV_VERSION ?= 0.0.1
 PROD_VERSION ?= 0.0.0
-IMAGE_TAG_BASE ?= quay.io/vllm-d/$(PROJECT_NAME)
+IMAGE_TAG_BASE ?= quay.io/llm-d/$(PROJECT_NAME)
 IMG = $(IMAGE_TAG_BASE):$(DEV_VERSION)
 NAMESPACE ?= hc4ai-operator
 
@@ -92,16 +92,23 @@ buildah-build: check-builder load-version-json ## Build and push image (multi-ar
 	@echo "✅ Using builder: $(BUILDER)"
 	@if [ "$(BUILDER)" = "buildah" ]; then \
 	  echo "🔧 Buildah detected: Performing multi-arch build..."; \
+	  FINAL_TAG=$(IMG); \
 	  for arch in amd64; do \
+	    ARCH_TAG=$$FINAL_TAG-$$arch; \
 	    echo "📦 Building for architecture: $$arch"; \
-	    buildah build --arch=$$arch --os=linux -t $(IMG)-$$arch . || exit 1; \
-	    echo "🚀 Pushing image: $(IMG)-$$arch"; \
-	    buildah push $(IMG)-$$arch docker://$(IMG)-$$arch || exit 1; \
+		buildah build --arch=$$arch --os=linux --layers -t $(IMG)-$$arch . || exit 1; \
+	    echo "🚀 Pushing image: $$ARCH_TAG"; \
+	    buildah push $$ARCH_TAG docker://$$ARCH_TAG || exit 1; \
 	  done; \
-	  echo "🧱 Creating and pushing manifest list: $(IMG)"; \
-	  buildah manifest create $(IMG); \
-	  buildah manifest add $(IMG) $(IMG)-amd64; \
-	  buildah manifest push --all $(IMG) docker://$(IMG); \
+	  echo "🧼 Removing existing manifest (if any)..."; \
+	  buildah manifest rm $$FINAL_TAG || true; \
+	  echo "🧱 Creating and pushing manifest list: $$FINAL_TAG"; \
+	  buildah manifest create $$FINAL_TAG; \
+	  for arch in amd64; do \
+	    ARCH_TAG=$$FINAL_TAG-$$arch; \
+	    buildah manifest add $$FINAL_TAG $$ARCH_TAG; \
+	  done; \
+	  buildah manifest push --all $$FINAL_TAG docker://$$FINAL_TAG; \
 	elif [ "$(BUILDER)" = "docker" ]; then \
 	  echo "🐳 Docker detected: Building with buildx..."; \
 	  sed -e '1 s/\(^FROM\)/FROM --platform=$${BUILDPLATFORM}/' Dockerfile > Dockerfile.cross; \
@@ -259,7 +266,7 @@ load-version-json: check-jq
 	  export DEV_VERSION; \
 	  export PROD_VERSION; \
 	fi && \
-	CURRENT_DEFAULT="quay.io/vllm-d/$(PROJECT_NAME)"; \
+	CURRENT_DEFAULT="quay.io/llm-d/$(PROJECT_NAME)"; \
 	if [ "$(IMAGE_TAG_BASE)" = "$$CURRENT_DEFAULT" ]; then \
 	  IMAGE_TAG_BASE=$$(jq -r '."dev-registry"' .version.json); \
 	  echo "✔ Loaded IMAGE_TAG_BASE from .version.json: $$IMAGE_TAG_BASE"; \
