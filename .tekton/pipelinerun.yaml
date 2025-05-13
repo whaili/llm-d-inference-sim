@@ -636,3 +636,6 @@ spec:
     - name: registry-secret
       secret:
         secretName: quay-secret-llm-d
+    - name: registry-secret
+      secret:
+        secretName: ghcr-secret-llm-d
