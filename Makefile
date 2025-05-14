@@ -13,9 +13,6 @@
 # limitations under the License.
 
 # Makefile for the vllm-sim project
-
-CONTAINER_RUNTIME ?= docker
-
 PACKAGE_VLLM_SIM = github.com/neuralmagic/vllm-sim/cmd/vllm-sim
 VLLM_SIM_NAME = vllm-sim/vllm-sim
 VLLM_SIM_TAG ?= 0.0.2
@@ -44,8 +41,7 @@ IMG = $(IMAGE_TAG_BASE):$(DEV_VERSION)
 NAMESPACE ?= hc4ai-operator
 
 
-# CONTAINER_TOOL := $(shell command -v docker >/dev/null 2>&1 && echo docker || command -v podman >/dev/null 2>&1 && echo podman || echo "")
-CONTAINER_TOOL ?= docker
+CONTAINER_TOOL := $(shell { command -v docker >/dev/null 2>&1 && echo docker; } || { command -v podman >/dev/null 2>&1 && echo podman; } || echo "")
 BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo $(CONTAINER_TOOL))
 PLATFORMS ?= linux/amd64 # linux/arm64 # linux/s390x,linux/ppc64le
 
