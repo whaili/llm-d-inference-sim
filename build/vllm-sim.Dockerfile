@@ -1,4 +1,4 @@
-# Copyright 2025 The vLLM-Sim Authors.
+# Copyright 2025 The llm-d-inference-sim Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 
 FROM alpine:3.21
 
-ADD --chmod=777 ./vllm-sim /vllm-sim/
+ADD --chmod=777 ./llm-d-inference-sim /llm-d-inference-sim/
 
-WORKDIR /vllm-sim/
+WORKDIR /llm-d-inference-sim/
 
-ENTRYPOINT ["/vllm-sim/vllm-sim"]
+ENTRYPOINT ["/llm-d-inference-sim/llm-d-inference-sim"]

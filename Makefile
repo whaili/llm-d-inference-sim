@@ -1,4 +1,4 @@
-# Copyright 2025 The vLLM-Sim Authors.
+# Copyright 2025 The llm-d-inference-sim Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,31 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Makefile for the vllm-sim project
+# Makefile for the llm-d-inference-sim project
 
 CONTAINER_RUNTIME ?= docker
 
-PACKAGE_VLLM_SIM = github.com/neuralmagic/vllm-sim/cmd/vllm-sim
-VLLM_SIM_NAME = vllm-sim/vllm-sim
+PACKAGE_VLLM_SIM = github.com/llm-d/llm-d-inference-sim/cmd/llm-d-inference-sim
+VLLM_SIM_NAME = llm-d-inference-sim/llm-d-inference-sim
 VLLM_SIM_TAG ?= 0.0.2
 
-.PHONY: build-vllm-sim
-build-vllm-sim:
+.PHONY: build-llm-d-inference-sim
+build-llm-d-inference-sim:
 	go build -o bin/ ${PACKAGE_VLLM_SIM}
 
-.PHONY: build-vllm-sim-linux
-build-vllm-sim-linux:
+.PHONY: build-llm-d-inference-sim-linux
+build-llm-d-inference-sim-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/linux/ ${PACKAGE_VLLM_SIM}
 
-.PHONY: build-vllm-sim-image
-build-vllm-sim-image: build-vllm-sim-linux
-	$(CONTAINER_RUNTIME) build --file build/vllm-sim.Dockerfile --tag ${VLLM_SIM_NAME}:${VLLM_SIM_TAG} ./bin/linux
+.PHONY: build-llm-d-inference-sim-image
+build-llm-d-inference-sim-image: build-llm-d-inference-sim-linux
+	$(CONTAINER_RUNTIME) build --file build/llm-d-inference-sim.Dockerfile --tag ${VLLM_SIM_NAME}:${VLLM_SIM_TAG} ./bin/linux
 
 
 SHELL := /usr/bin/env bash
 
 # Defaults
-PROJECT_NAME ?= vllm-sim
+PROJECT_NAME ?= llm-d-inference-sim
 DEV_VERSION ?= 0.0.1
 PROD_VERSION ?= 0.0.0
 IMAGE_TAG_BASE ?= ghcr.io/llm-d/$(PROJECT_NAME)

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: vllm
-        image: vllm-sim/vllm-sim:0.0.2
+        image: llm-d-inference-sim/llm-d-inference-sim:0.0.2
         args:
         - "--port=30801"
         - "--model=model1"
@@ -64,7 +64,7 @@ spec:
     spec:
       containers:
       - name: vllm
-        image: vllm-sim/vllm-sim:0.0.2
+        image: llm-d-inference-sim/llm-d-inference-sim:0.0.2
         args:
         - "--port=30802"
         - "--model=model1"
@@ -109,7 +109,7 @@ spec:
     spec:
       containers:
       - name: vllm
-        image: vllm-sim/vllm-sim:0.0.2
+        image: llm-d-inference-sim/llm-d-inference-sim:0.0.2
         args:
         - "--port=30803"
         - "--model=model2"

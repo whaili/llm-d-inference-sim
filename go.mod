@@ -1,4 +1,4 @@
-module github.com/neuralmagic/vllm-sim
+module github.com/llm-d/llm-d-inference-sim
 
 go 1.23.4
 

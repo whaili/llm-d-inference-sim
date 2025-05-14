@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The vLLM-Sim Authors.
+Copyright 2025 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
-	vllmapi "github.com/neuralmagic/vllm-sim/pkg/vllm-api"
+	vllmapi "github.com/llm-d/llm-d-inference-sim/pkg/vllm-api"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	"github.com/valyala/fasthttp"
@@ -77,7 +77,7 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 
 // parseCommandParams parses and validates command line parameters
 func (s *VllmSimulator) parseCommandParams() error {
-	f := pflag.NewFlagSet("vllm-sim flags", pflag.ExitOnError)
+	f := pflag.NewFlagSet("llm-d-inference-sim flags", pflag.ExitOnError)
 	f.StringVar(&s.mode, "mode", "random", "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
 	f.IntVar(&s.port, "port", vLLMDefaultPort, "Port")
 	f.IntVar(&s.interTokenLatency, "inter-token-latency", 0, "Time to generate one token (in milliseconds)")
