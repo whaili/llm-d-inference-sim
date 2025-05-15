@@ -16,7 +16,7 @@ limitations under the License.
 
 // Definitions of all sturctures used by vLLM simultor
 // Contains the main simulator class and all definitions related to request/response for all supported APIs
-package vllmsim
+package llmdinferencesim
 
 import (
 	"fmt"

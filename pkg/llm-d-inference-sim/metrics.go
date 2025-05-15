@@ -16,7 +16,7 @@ limitations under the License.
 
 // Contains functions related to prometheus metrics
 
-package vllmsim
+package llmdinferencesim
 
 import (
 	"strconv"
