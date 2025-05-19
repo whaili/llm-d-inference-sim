@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The vLLM-Sim Authors.
+Copyright 2025 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 
 // Definitions of all sturctures used by vLLM simultor
 // Contains the main simulator class and all definitions related to request/response for all supported APIs
-package vllmsim
+package llmdinferencesim
 
 import (
 	"fmt"

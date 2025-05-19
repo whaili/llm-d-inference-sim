@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: vllm-sim
+  name: llm-d-inference-sim
   annotations:
     pipelinesascode.tekton.dev/on-event: "[pull_request, push]"
     pipelinesascode.tekton.dev/on-target-branch: "[main, dev]"
@@ -632,7 +632,10 @@ spec:
         secretName: "{{ git_auth_secret }}"
     - name: git-auth  
       secret:
-        secretName: "git-auth-secret-neuralmagic"
+        secretName: "git-auth-secret-llm-d"
+    # - name: registry-secret
+    #   secret:
+    #     secretName: quay-secret-llm-d
     - name: registry-secret
       secret:
-        secretName: quay-secret-llm-d
+        secretName: ghcr-secret-llm-d

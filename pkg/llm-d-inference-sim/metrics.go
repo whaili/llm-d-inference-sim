@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The vLLM-Sim Authors.
+Copyright 2025 The llm-d-inference-simference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 
 // Contains functions related to prometheus metrics
 
-package vllmsim
+package llmdinferencesim
 
 import (
 	"strconv"
@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	vllmapi "github.com/neuralmagic/vllm-sim/pkg/vllm-api"
+	vllmapi "github.com/llm-d/llm-d-inference-sim/pkg/vllm-api"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

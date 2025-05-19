@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2025 The vLLM-Sim Authors.
+# Copyright 2025 The llm-d-inference-sim Authors.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ echo "Create the vLLM cluster:"
 tput sgr0
 echo ""
 kind create cluster --name vllm --config ${DIR}/../yaml/vllm-cluster.yaml
-kind load docker-image vllm-sim/vllm-sim:0.0.2 --name vllm
+kind load docker-image llm-d-inference-sim/llm-d-inference-sim:0.0.2 --name vllm
 
 echo ""
 tput bold

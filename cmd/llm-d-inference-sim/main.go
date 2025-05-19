@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The vLLM-Sim Authors.
+Copyright 2025 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/neuralmagic/vllm-sim/cmd/signals"
-	vllmsim "github.com/neuralmagic/vllm-sim/pkg/vllm-sim"
+	"github.com/llm-d/llm-d-inference-sim/cmd/signals"
+	vllmsim "github.com/llm-d/llm-d-inference-sim/pkg/llm-d-inference-sim"
 )
 
 func main() {
