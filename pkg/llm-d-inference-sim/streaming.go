@@ -122,6 +122,11 @@ func (s *VllmSimulator) createCompletionChunk(isChatCompletion bool, creationTim
 		Created: creationTime,
 		Model:   model,
 	}
+	if isChatCompletion {
+		baseChunk.Object = chatCompletionChunkObject
+	} else {
+		baseChunk.Object = textCompletionObject
+	}
 	if completionTokens != 0 {
 		baseChunk.Usage = &usage{
 			PromptTokens:     promptTokens,
