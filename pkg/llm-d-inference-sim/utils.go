@@ -123,6 +123,13 @@ func flipCoin() bool {
 	return randomInt(0, 1) != 0
 }
 
+// Returns a random float64 in the range [min, max)
+func randomFloat(min float64, max float64) float64 {
+	src := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(src)
+	return r.Float64()*(max-min) + min
+}
+
 // Regular expression for the response tokenization
 var re *regexp.Regexp
 

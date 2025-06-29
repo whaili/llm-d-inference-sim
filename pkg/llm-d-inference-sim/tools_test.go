@@ -218,7 +218,7 @@ var toolWithObjects = []openai.ChatCompletionToolParam{
 								"type": "string",
 							},
 							"quantity": map[string]string{
-								"type": "number",
+								"type": "integer",
 							},
 							"address": map[string]interface{}{
 								"type": "object",
@@ -227,7 +227,7 @@ var toolWithObjects = []openai.ChatCompletionToolParam{
 										"type": "string",
 									},
 									"number": map[string]interface{}{
-										"type": "number",
+										"type": "integer",
 									},
 									"home": map[string]interface{}{
 										"type": "boolean",
@@ -264,7 +264,7 @@ var toolWithObjectAndArray = []openai.ChatCompletionToolParam{
 								"description": "The user's name",
 							},
 							"age": map[string]string{
-								"type":        "number",
+								"type":        "integer",
 								"description": "The user's age",
 							},
 							"hobbies": map[string]interface{}{
@@ -496,7 +496,7 @@ var _ = Describe("Simulator for request with tools", func() {
 			Expect(tc.Function.Name).To(Equal("multiply_numbers"))
 			Expect(tc.ID).NotTo(BeEmpty())
 			Expect(string(tc.Type)).To(Equal("function"))
-			args := make(map[string][]int)
+			args := make(map[string][]float64)
 			err = json.Unmarshal([]byte(tc.Function.Arguments), &args)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(args["numbers"]).ToNot(BeEmpty())
