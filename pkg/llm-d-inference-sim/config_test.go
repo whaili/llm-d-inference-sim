@@ -239,6 +239,12 @@ var _ = Describe("Simulator configuration", func() {
 	}
 	tests = append(tests, test)
 
+	test = testCase{
+		name: "invalid max-model-len",
+		args: []string{"cmd", "--max-model-len", "0", "--config", "../../manifests/config.yaml"},
+	}
+	tests = append(tests, test)
+
 	DescribeTable("check configurations",
 		func(args []string, expectedConfig *configuration) {
 			config, err := createSimConfig(args)
@@ -264,5 +270,6 @@ var _ = Describe("Simulator configuration", func() {
 		Entry(tests[9].name, tests[9].args),
 		Entry(tests[10].name, tests[10].args),
 		Entry(tests[11].name, tests[11].args),
+		Entry(tests[12].name, tests[12].args),
 	)
 })

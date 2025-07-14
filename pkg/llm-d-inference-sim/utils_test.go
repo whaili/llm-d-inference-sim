@@ -43,4 +43,48 @@ var _ = Describe("Utils", func() {
 			Expect(finishReason).Should(Equal(stopFinishReason))
 		})
 	})
+
+	Context("validateContextWindow", func() {
+		It("should pass when total tokens are within limit", func() {
+			promptTokens := 100
+			maxCompletionTokens := int64(50)
+			maxModelLen := 200
+
+			isValid, actualCompletionTokens, totalTokens := validateContextWindow(promptTokens, &maxCompletionTokens, maxModelLen)
+			Expect(isValid).Should(BeTrue())
+			Expect(actualCompletionTokens).Should(Equal(int64(50)))
+			Expect(totalTokens).Should(Equal(int64(150)))
+		})
+
+		It("should fail when total tokens exceed limit", func() {
+			promptTokens := 150
+			maxCompletionTokens := int64(100)
+			maxModelLen := 200
+
+			isValid, actualCompletionTokens, totalTokens := validateContextWindow(promptTokens, &maxCompletionTokens, maxModelLen)
+			Expect(isValid).Should(BeFalse())
+			Expect(actualCompletionTokens).Should(Equal(int64(100)))
+			Expect(totalTokens).Should(Equal(int64(250)))
+		})
+
+		It("should handle nil max completion tokens", func() {
+			promptTokens := 100
+			maxModelLen := 200
+
+			isValid, actualCompletionTokens, totalTokens := validateContextWindow(promptTokens, nil, maxModelLen)
+			Expect(isValid).Should(BeTrue())
+			Expect(actualCompletionTokens).Should(Equal(int64(0)))
+			Expect(totalTokens).Should(Equal(int64(100)))
+		})
+
+		It("should fail when only prompt tokens exceed limit", func() {
+			promptTokens := 250
+			maxModelLen := 200
+
+			isValid, actualCompletionTokens, totalTokens := validateContextWindow(promptTokens, nil, maxModelLen)
+			Expect(isValid).Should(BeFalse())
+			Expect(actualCompletionTokens).Should(Equal(int64(0)))
+			Expect(totalTokens).Should(Equal(int64(250)))
+		})
+	})
 })

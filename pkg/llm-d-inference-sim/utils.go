@@ -58,6 +58,20 @@ func getMaxTokens(maxCompletionTokens *int64, maxTokens *int64) (*int64, error) 
 	return tokens, nil
 }
 
+// validateContextWindow checks if the request fits within the model's context window
+// Returns validation result, actual completion tokens, and total tokens
+func validateContextWindow(promptTokens int, maxCompletionTokens *int64, maxModelLen int) (bool, int64, int64) {
+	completionTokens := int64(0)
+	if maxCompletionTokens != nil {
+		completionTokens = *maxCompletionTokens
+	}
+
+	totalTokens := int64(promptTokens) + completionTokens
+	isValid := totalTokens <= int64(maxModelLen)
+
+	return isValid, completionTokens, totalTokens
+}
+
 // getRandomResponseText returns random response text from the pre-defined list of responses
 // considering max completion tokens if it is not nil, and a finish reason (stop or length)
 func getRandomResponseText(maxCompletionTokens *int64) (string, string) {
