@@ -31,6 +31,7 @@ type streamingContext struct {
 	isChatCompletion bool
 	model            string
 	creationTime     int64
+	doRemotePrefill  bool
 }
 
 // sendStreamingResponse creates and sends a streaming response for completion requests of both types (text and chat)
@@ -86,7 +87,7 @@ func (s *VllmSimulator) sendStreamingResponse(context *streamingContext, respons
 // sendTokenChunks creates and sends response chunks
 func (s *VllmSimulator) sendTokenChunks(context *streamingContext, w *bufio.Writer, tokens []string, tc *toolCall, finishReason string) {
 	// time to first token delay
-	time.Sleep(time.Duration(s.config.TimeToFirstToken) * time.Millisecond)
+	time.Sleep(time.Duration(s.getTimeToFirstToken(context.doRemotePrefill)) * time.Millisecond)
 
 	for i, token := range tokens {
 		if i != 0 {

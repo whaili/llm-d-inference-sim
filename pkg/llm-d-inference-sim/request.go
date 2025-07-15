@@ -44,6 +44,10 @@ type completionRequest interface {
 	getToolChoice() string
 	// getMaxCompletionTokens returns the maximum completion tokens requested
 	getMaxCompletionTokens() *int64
+	// doRemoteDecode() returns true if do_remote_decode field is true in the request, this means that this is prefill request
+	doRemoteDecode() bool
+	// doRemotePrefill() returns true if do_remote_prefill field is true in the request, this means that this is decode request
+	doRemotePrefill() bool
 }
 
 // baseCompletionRequest contains base completion request related information
@@ -54,6 +58,18 @@ type baseCompletionRequest struct {
 	StreamOptions streamOptions `json:"stream_options"`
 	// Model defines Model name to use for "inference", could be base Model name or one of available LoRA adapters
 	Model string `json:"model"`
+	// DoRemoteDecode boolean value, true when request's decode will be done on remote pod
+	DoRemoteDecode bool `json:"do_remote_decode"`
+	// DoRemotePrefill boolean value, true when request's prefill was done on remote pod
+	DoRemotePrefill bool `json:"do_remote_prefill"`
+	// RemoteBlockIds is a list of block identifiers to process remotely for distributed decoding
+	RemoteBlockIds []string `json:"remote_block_ids"`
+	// RemoteEngineId is an identifier of the remote inference engine or backend to use for processing requests
+	RemoteEngineId string `json:"remote_engine_id"`
+	// RemoteHost is a hostname or IP address of the remote server handling prefill
+	RemoteHost string `json:"remote_host"`
+	// RemotePort is a port of the remote server handling prefill
+	RemotePort int `json:"remote_port"`
 }
 
 // StreamOptions defines streaming options for streaming requests
@@ -72,6 +88,14 @@ func (b *baseCompletionRequest) getModel() string {
 
 func (b *baseCompletionRequest) includeUsage() bool {
 	return !b.Stream || b.StreamOptions.IncludeUsage
+}
+
+func (b *baseCompletionRequest) doRemoteDecode() bool {
+	return b.DoRemoteDecode
+}
+
+func (b *baseCompletionRequest) doRemotePrefill() bool {
+	return b.DoRemotePrefill
 }
 
 // completionReqCtx is a context passed in the simulator's flow, it contains the request data needed
