@@ -31,6 +31,8 @@ const (
 
 // CompletionRequest interface representing both completion request types (text and chat)
 type CompletionRequest interface {
+	// GetRequestID returns the unique request id
+	GetRequestID() string
 	// CreateResponseText creates and returns response payload based on this request,
 	// i.e., an array of generated tokens, the finish reason, and the number of created
 	// tokens
@@ -43,6 +45,8 @@ type CompletionRequest interface {
 	IncludeUsage() bool
 	// GetNumberOfPromptTokens returns the number of tokens in the prompt
 	GetNumberOfPromptTokens() int
+	// GetPrompt returns the prompt
+	GetPrompt() string
 	// GetTools() returns tools to use (in chat completion)
 	GetTools() []Tool
 	// GetToolChoice() returns tool choice (in chat completion)
@@ -57,6 +61,8 @@ type CompletionRequest interface {
 
 // baseCompletionRequest contains base completion request related information
 type baseCompletionRequest struct {
+	// RequestID is the unique id of this request
+	RequestID string
 	// Stream is a boolean value, defines whether response should be sent as a Stream
 	Stream bool `json:"stream"`
 	// StreamOptions defines streaming options in case Stream is set to true
@@ -81,6 +87,10 @@ type baseCompletionRequest struct {
 type StreamOptions struct {
 	// IncludeUsage is a boolean value, defines whether response contain usage statistics
 	IncludeUsage bool `json:"include_usage"`
+}
+
+func (b *baseCompletionRequest) GetRequestID() string {
+	return b.RequestID
 }
 
 func (b *baseCompletionRequest) IsStream() bool {
@@ -158,12 +168,16 @@ type Tool struct {
 	Type string `json:"type"`
 }
 
-func (c *ChatCompletionRequest) GetNumberOfPromptTokens() int {
+func (c *ChatCompletionRequest) GetPrompt() string {
 	var messages string
 	for _, message := range c.Messages {
 		messages += message.Content.PlainText() + " "
 	}
-	return len(common.Tokenize(messages))
+	return messages
+}
+
+func (c *ChatCompletionRequest) GetNumberOfPromptTokens() int {
+	return len(common.Tokenize(c.GetPrompt()))
 }
 
 func (c *ChatCompletionRequest) GetTools() []Tool {
@@ -228,8 +242,12 @@ type TextCompletionRequest struct {
 	MaxTokens *int64 `json:"max_tokens"`
 }
 
+func (t *TextCompletionRequest) GetPrompt() string {
+	return t.Prompt
+}
+
 func (t *TextCompletionRequest) GetNumberOfPromptTokens() int {
-	return len(common.Tokenize(t.Prompt))
+	return len(common.Tokenize(t.GetPrompt()))
 }
 
 func (c *TextCompletionRequest) GetTools() []Tool {

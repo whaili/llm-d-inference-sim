@@ -36,6 +36,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	kvcache "github.com/llm-d/llm-d-inference-sim/pkg/kv-cache"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	vllmapi "github.com/llm-d/llm-d-inference-sim/pkg/vllm-api"
 )
@@ -76,6 +77,8 @@ type VllmSimulator struct {
 	reqChan chan *openaiserverapi.CompletionReqCtx
 	// schema validator for tools parameters
 	toolsValidator *openaiserverapi.Validator
+	// kv cache functionality
+	kvcacheHelper *kvcache.KVCacheHelper
 }
 
 // New creates a new VllmSimulator instance with the given logger
@@ -84,10 +87,12 @@ func New(logger logr.Logger) (*VllmSimulator, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tools validator: %s", err)
 	}
+
 	return &VllmSimulator{
 		logger:         logger,
 		reqChan:        make(chan *openaiserverapi.CompletionReqCtx, 1000),
 		toolsValidator: toolsValidtor,
+		kvcacheHelper:  nil, // kvcache helper will be created only if required after reading configuration
 	}, nil
 }
 
@@ -110,6 +115,15 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	err = s.createAndRegisterPrometheus()
 	if err != nil {
 		return err
+	}
+
+	if s.config.EnableKVCache {
+		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(s.logger)
+		if err != nil {
+			return err
+		}
+
+		go s.kvcacheHelper.Run(ctx)
 	}
 
 	// run request processing workers
@@ -174,6 +188,8 @@ func (s *VllmSimulator) Printf(format string, args ...interface{}) {
 
 // readRequest reads and parses data from the body of the given request according the type defined by isChatCompletion
 func (s *VllmSimulator) readRequest(ctx *fasthttp.RequestCtx, isChatCompletion bool) (openaiserverapi.CompletionRequest, error) {
+	requestID := uuid.NewString()
+
 	if isChatCompletion {
 		var req openaiserverapi.ChatCompletionRequest
 
@@ -195,12 +211,15 @@ func (s *VllmSimulator) readRequest(ctx *fasthttp.RequestCtx, isChatCompletion b
 				return nil, err
 			}
 		}
+		req.RequestID = requestID
 
 		return &req, nil
 	}
 
 	var req openaiserverapi.TextCompletionRequest
 	err := json.Unmarshal(ctx.Request.Body(), &req)
+
+	req.RequestID = requestID
 
 	return &req, err
 }
@@ -283,6 +302,24 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 	if errMsg != "" {
 		s.sendCompletionError(ctx, errMsg, errType, errCode)
 		return
+	}
+
+	defer func() {
+		if s.config.EnableKVCache && !isChatCompletion {
+			err := s.kvcacheHelper.OnRequestEnd(vllmReq)
+			if err != nil {
+				// TODO should it be an error with http response error or just a warning?
+				s.logger.Error(err, "kv cache failed to process request end")
+			}
+		}
+	}()
+	if s.config.EnableKVCache && !isChatCompletion {
+		// kv cache is currently supported for /completion API only
+		err = s.kvcacheHelper.OnRequestStart(vllmReq)
+		if err != nil {
+			// TODO should it be an error with http response error or just a warning?
+			s.logger.Error(err, "kv cache failed to process request start")
+		}
 	}
 
 	// Validate context window constraints

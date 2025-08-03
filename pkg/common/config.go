@@ -110,6 +110,9 @@ type Configuration struct {
 	// ObjectToolCallNotRequiredParamProbability is the probability to add a field, that is not required,
 	// in an object in a tool call, optional, defaults to 50
 	ObjectToolCallNotRequiredParamProbability int `yaml:"object-tool-call-not-required-field-probability"`
+
+	// EnableKVCache defines if kv cache feature will be enabled
+	EnableKVCache bool `yaml:"enable-kvcache"`
 }
 
 type LoraModule struct {
