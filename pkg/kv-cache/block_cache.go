@@ -16,14 +16,19 @@ limitations under the License.
 package kvcache
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/go-logr/logr"
 )
 
 const (
 	capacityError = "the kv cache does not have sufficient capacity to store this request"
+	batchSize     = 3
+	delay         = time.Second
 )
 
 // blockCache represents a thread-safe cache for blocks with eviction policy
@@ -33,15 +38,32 @@ type blockCache struct {
 	usedBlocks      map[uint64]int       // block hash -> reference count
 	unusedBlocks    map[uint64]time.Time // block hash -> last usage timestamp
 	maxBlocks       int                  // maximum number of blocks in the cache
+	eventSender     *KVEventSender       // emmits kv events
+	eventChan       chan EventData       // channel for asynchronous event processing
+	logger          logr.Logger
 }
 
 // newBlockCache creates a new blockCache with the specified maximum number of blocks
-func newBlockCache(maxBlocks int) *blockCache {
+func newBlockCache(maxBlocks int, logger logr.Logger) *blockCache {
+	// TODO read size of channel from config
+	eChan := make(chan EventData, 10000)
+
 	return &blockCache{
 		requestToBlocks: make(map[string][]uint64),
 		usedBlocks:      make(map[uint64]int),
 		unusedBlocks:    make(map[uint64]time.Time),
 		maxBlocks:       maxBlocks,
+		eventChan:       eChan,
+		// TODO - create topic name from pod ip + model name
+		eventSender: NewKVEventSender(&Publisher{}, "topic1", eChan, batchSize, delay, logger),
+		logger:      logger,
+	}
+}
+
+func (b *blockCache) start(ctx context.Context) {
+	err := b.eventSender.Run(ctx)
+	if err != nil {
+		b.logger.Info("sender stopped with error", "error", err)
 	}
 }
 
@@ -106,10 +128,12 @@ func (bc *blockCache) startRequest(requestID string, blocks []uint64) error {
 			}
 
 			delete(bc.unusedBlocks, oldestUnusedHash)
+			bc.eventChan <- EventData{action: eventActionRemove, hashValues: []uint64{block}}
 		}
 
 		// Add the new block
 		bc.usedBlocks[block] = 1
+		bc.eventChan <- EventData{action: eventActionStore, hashValues: []uint64{block}}
 	}
 
 	// store the request mapping

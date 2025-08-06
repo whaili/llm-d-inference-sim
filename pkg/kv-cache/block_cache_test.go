@@ -17,6 +17,7 @@ limitations under the License.
 package kvcache
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -172,7 +173,22 @@ var _ = Describe("Block cache", Ordered, func() {
 
 		for _, test := range testCases {
 			It(test.name, func() {
-				blockCache := newBlockCache(test.cacheSize)
+				ctx, cancel := context.WithCancel(context.Background())
+
+				wg := sync.WaitGroup{}
+				wg.Add(1)
+
+				blockCache := newBlockCache(test.cacheSize, GinkgoLogr)
+
+				go func() {
+					blockCache.start(ctx)
+					wg.Done()
+				}()
+
+				defer func() {
+					cancel()
+					wg.Wait() // wait for goroutine to exit
+				}()
 
 				for _, action := range test.actions {
 					var err error
@@ -251,7 +267,7 @@ var _ = Describe("Block cache", Ordered, func() {
 
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
-				blockCache := newBlockCache(testCase.cacheSize)
+				blockCache := newBlockCache(testCase.cacheSize, GinkgoLogr)
 				var wg sync.WaitGroup
 
 				// Start multiple goroutines performing concurrent operations
