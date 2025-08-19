@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	"github.com/valyala/fasthttp"
@@ -154,7 +153,7 @@ func (s *VllmSimulator) sendTokenChunks(context *streamingContext, w *bufio.Writ
 // supports both modes (text and chat)
 func (s *VllmSimulator) createUsageChunk(context *streamingContext, usageData *openaiserverapi.Usage) openaiserverapi.CompletionRespChunk {
 	baseChunk := openaiserverapi.BaseCompletionResponse{
-		ID:      chatComplIDPrefix + uuid.NewString(),
+		ID:      chatComplIDPrefix + common.GenerateUUIDString(),
 		Created: context.creationTime,
 		Model:   context.model,
 		Usage:   usageData,
@@ -179,7 +178,7 @@ func (s *VllmSimulator) createUsageChunk(context *streamingContext, usageData *o
 func (s *VllmSimulator) createTextCompletionChunk(context *streamingContext, token string, finishReason *string) openaiserverapi.CompletionRespChunk {
 	return &openaiserverapi.TextCompletionResponse{
 		BaseCompletionResponse: openaiserverapi.BaseCompletionResponse{
-			ID:      chatComplIDPrefix + uuid.NewString(),
+			ID:      chatComplIDPrefix + common.GenerateUUIDString(),
 			Created: context.creationTime,
 			Model:   context.model,
 			Object:  textCompletionObject,
@@ -199,7 +198,7 @@ func (s *VllmSimulator) createChatCompletionChunk(context *streamingContext, tok
 	role string, finishReason *string) openaiserverapi.CompletionRespChunk {
 	chunk := openaiserverapi.ChatCompletionRespChunk{
 		BaseCompletionResponse: openaiserverapi.BaseCompletionResponse{
-			ID:      chatComplIDPrefix + uuid.NewString(),
+			ID:      chatComplIDPrefix + common.GenerateUUIDString(),
 			Created: context.creationTime,
 			Model:   context.model,
 			Object:  chatCompletionChunkObject,
