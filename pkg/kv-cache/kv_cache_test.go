@@ -201,11 +201,12 @@ var _ = Describe("KV cache", Ordered, func() {
 				time.Sleep(300 * time.Millisecond)
 
 				config := &common.Configuration{
-					Port:           1234,
-					Model:          "model",
-					KVCacheSize:    test.cacheSize,
-					ZMQEndpoint:    pubEndpoint,
-					EventBatchSize: 1,
+					Port:                  1234,
+					Model:                 "model",
+					KVCacheSize:           test.cacheSize,
+					ZMQEndpoint:           pubEndpoint,
+					ZMQMaxConnectAttempts: 3,
+					EventBatchSize:        1,
 				}
 
 				sub, topic := createSub(config)
@@ -304,10 +305,11 @@ var _ = Describe("KV cache", Ordered, func() {
 
 		It("should send events correctly", func() {
 			config := &common.Configuration{
-				Port:        1234,
-				Model:       "model",
-				KVCacheSize: 4,
-				ZMQEndpoint: pubEndpoint,
+				Port:                  1234,
+				Model:                 "model",
+				KVCacheSize:           4,
+				ZMQEndpoint:           pubEndpoint,
+				ZMQMaxConnectAttempts: 3,
 			}
 
 			sub, topic := createSub(config)
@@ -413,10 +415,11 @@ var _ = Describe("KV cache", Ordered, func() {
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
 				config := common.Configuration{
-					Port:        1234,
-					Model:       "model",
-					KVCacheSize: testCase.cacheSize,
-					ZMQEndpoint: pubEndpoint,
+					Port:                  1234,
+					Model:                 "model",
+					KVCacheSize:           testCase.cacheSize,
+					ZMQEndpoint:           pubEndpoint,
+					ZMQMaxConnectAttempts: 3,
 				}
 				blockCache, err := newBlockCache(&config, GinkgoLogr)
 				Expect(err).NotTo(HaveOccurred())

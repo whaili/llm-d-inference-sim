@@ -103,12 +103,14 @@ var _ = Describe("Simulator configuration", func() {
 		"{\"name\":\"lora4\",\"path\":\"/path/to/lora4\"}",
 	}
 	c.EventBatchSize = 5
+	c.ZMQMaxConnectAttempts = 1
 	test = testCase{
 		name: "config file with command line args",
 		args: []string{"cmd", "--model", model, "--config", "../../manifests/config.yaml", "--port", "8002",
 			"--served-model-name", "alias1", "alias2", "--seed", "100",
 			"--lora-modules", "{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}", "{\"name\":\"lora4\",\"path\":\"/path/to/lora4\"}",
 			"--event-batch-size", "5",
+			"--zmq-max-connect-attempts", "1",
 		},
 		expectedConfig: c,
 	}
@@ -121,6 +123,7 @@ var _ = Describe("Simulator configuration", func() {
 	c.LoraModulesString = []string{
 		"{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}",
 	}
+	c.ZMQMaxConnectAttempts = 0
 	test = testCase{
 		name: "config file with command line args with different format",
 		args: []string{"cmd", "--model", model, "--config", "../../manifests/config.yaml", "--port", "8002",
@@ -376,6 +379,14 @@ var _ = Describe("Simulator configuration", func() {
 			name: "invalid fake metrics: kv cache usage",
 			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":40}",
 				"--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid (negative) zmq-max-connect-attempts for argument",
+			args: []string{"cmd", "zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid (negative) zmq-max-connect-attempts for config file",
+			args: []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
 		},
 	}
 
