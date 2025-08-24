@@ -190,12 +190,6 @@ func (s *VllmSimulator) startServer(ctx context.Context, listener net.Listener) 
 		Logger:       s,
 	}
 
-	defer func() {
-		if err := listener.Close(); err != nil {
-			s.logger.Error(err, "server listener close failed")
-		}
-	}()
-
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)
 	go func() {
