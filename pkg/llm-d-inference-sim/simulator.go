@@ -20,6 +20,7 @@ package llmdinferencesim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -114,7 +115,13 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	s.config = config
+
+	err = s.showConfig(s.logger)
+	if err != nil {
+		return err
+	}
 
 	for _, lora := range config.LoraModules {
 		s.loraAdaptors.Store(lora.Name, "")
@@ -733,4 +740,37 @@ func (s *VllmSimulator) getDisplayedModelName(reqModel string) string {
 		return reqModel
 	}
 	return s.config.ServedModelNames[0]
+}
+
+func (s *VllmSimulator) showConfig(tgtLgr logr.Logger) error {
+	if tgtLgr == logr.Discard() {
+		return errors.New("target logger is nil, cannot show configuration")
+	}
+	cfgJSON, err := json.Marshal(s.config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+
+	// clean LoraModulesString field
+	var m map[string]interface{}
+	err = json.Unmarshal(cfgJSON, &m)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+	m["lora-modules"] = m["LoraModules"]
+	delete(m, "LoraModules")
+	delete(m, "LoraModulesString")
+
+	// clean fake-metrics field
+	if field, ok := m["fake-metrics"].(map[string]interface{}); ok {
+		delete(field, "LorasString")
+	}
+
+	// show in JSON
+	cfgJSON, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+	tgtLgr.Info("Configuration:", "", string(cfgJSON))
+	return nil
 }
