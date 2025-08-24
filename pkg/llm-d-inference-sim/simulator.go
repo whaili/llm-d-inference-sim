@@ -146,8 +146,8 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 		return err
 	}
 
-	// start the http server
-	return s.startServer(listener)
+	// start the http server with context support
+	return s.startServer(ctx, listener)
 }
 
 func (s *VllmSimulator) newListener() (net.Listener, error) {
@@ -160,7 +160,7 @@ func (s *VllmSimulator) newListener() (net.Listener, error) {
 }
 
 // startServer starts http server on port defined in command line
-func (s *VllmSimulator) startServer(listener net.Listener) error {
+func (s *VllmSimulator) startServer(ctx context.Context, listener net.Listener) error {
 	r := fasthttprouter.New()
 
 	// support completion APIs
@@ -189,7 +189,33 @@ func (s *VllmSimulator) startServer(listener net.Listener) error {
 		}
 	}()
 
-	return server.Serve(listener)
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		s.logger.Info("HTTP server starting")
+		serverErr <- server.Serve(listener)
+	}()
+
+	// Wait for either context cancellation or server error
+	select {
+	case <-ctx.Done():
+		s.logger.Info("Shutdown signal received, shutting down HTTP server gracefully")
+
+		// Gracefully shutdown the server
+		if err := server.Shutdown(); err != nil {
+			s.logger.Error(err, "Error during server shutdown")
+			return err
+		}
+
+		s.logger.Info("HTTP server stopped")
+		return nil
+
+	case err := <-serverErr:
+		if err != nil {
+			s.logger.Error(err, "HTTP server failed")
+		}
+		return err
+	}
 }
 
 // Print prints to a log, implementation of fasthttp.Logger
