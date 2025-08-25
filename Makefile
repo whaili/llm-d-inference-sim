@@ -77,7 +77,11 @@ format: ## Format Go source files
 .PHONY: test
 test: check-ginkgo download-tokenizer download-zmq ## Run tests
 	@printf "\033[33;1m==== Running tests ====\033[0m\n"
+ifdef GINKGO_FOCUS
+	CGO_ENABLED=1 ginkgo -ldflags="$(GO_LDFLAGS)" -v -r --focus="$(GINKGO_FOCUS)"
+else
 	CGO_ENABLED=1 ginkgo -ldflags="$(GO_LDFLAGS)" -v -r
+endif
 
 .PHONY: post-deploy-test
 post-deploy-test: ## Run post deployment tests
