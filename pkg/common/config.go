@@ -34,7 +34,14 @@ const (
 	vLLMDefaultPort = 8000
 	ModeRandom      = "random"
 	ModeEcho        = "echo"
-	dummy           = "dummy"
+	// Failure type constants
+	FailureTypeRateLimit      = "rate_limit"
+	FailureTypeInvalidAPIKey  = "invalid_api_key"
+	FailureTypeContextLength  = "context_length"
+	FailureTypeServerError    = "server_error"
+	FailureTypeInvalidRequest = "invalid_request"
+	FailureTypeModelNotFound  = "model_not_found"
+	dummy                     = "dummy"
 )
 
 type Configuration struct {
@@ -134,6 +141,11 @@ type Configuration struct {
 
 	// FakeMetrics is a set of metrics to send to Prometheus instead of the real data
 	FakeMetrics *Metrics `yaml:"fake-metrics" json:"fake-metrics"`
+
+	// FailureInjectionRate is the probability (0-100) of injecting failures
+	FailureInjectionRate int `yaml:"failure-injection-rate" json:"failure-injection-rate"`
+	// FailureTypes is a list of specific failure types to inject (empty means all types)
+	FailureTypes []string `yaml:"failure-types" json:"failure-types"`
 }
 
 type Metrics struct {
@@ -357,6 +369,27 @@ func (c *Configuration) validate() error {
 	if c.EventBatchSize < 1 {
 		return errors.New("event batch size cannot less than 1")
 	}
+
+	if c.FailureInjectionRate < 0 || c.FailureInjectionRate > 100 {
+		return errors.New("failure injection rate should be between 0 and 100")
+	}
+
+	validFailureTypes := map[string]bool{
+		FailureTypeRateLimit:      true,
+		FailureTypeInvalidAPIKey:  true,
+		FailureTypeContextLength:  true,
+		FailureTypeServerError:    true,
+		FailureTypeInvalidRequest: true,
+		FailureTypeModelNotFound:  true,
+	}
+	for _, failureType := range c.FailureTypes {
+		if !validFailureTypes[failureType] {
+			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType,
+				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength,
+				FailureTypeServerError, FailureTypeInvalidRequest, FailureTypeModelNotFound)
+		}
+	}
+
 	if c.ZMQMaxConnectAttempts > 10 {
 		return errors.New("zmq retries times cannot be more than 10")
 	}
@@ -397,7 +430,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.IntVar(&config.MaxCPULoras, "max-cpu-loras", config.MaxCPULoras, "Maximum number of LoRAs to store in CPU memory")
 	f.IntVar(&config.MaxModelLen, "max-model-len", config.MaxModelLen, "Model's context window, maximum number of tokens in a single request including input and output")
 
-	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
+	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode: echo - returns the same text that was sent in the request, for chat completion returns the last message; random - returns random sentence from a bank of pre-defined sentences")
 	f.IntVar(&config.InterTokenLatency, "inter-token-latency", config.InterTokenLatency, "Time to generate one token (in milliseconds)")
 	f.IntVar(&config.TimeToFirstToken, "time-to-first-token", config.TimeToFirstToken, "Time to first token (in milliseconds)")
 	f.IntVar(&config.KVCacheTransferLatency, "kv-cache-transfer-latency", config.KVCacheTransferLatency, "Time for KV-cache transfer from a remote vLLM (in milliseconds)")
@@ -423,6 +456,13 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
 	f.UintVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
+
+	f.IntVar(&config.FailureInjectionRate, "failure-injection-rate", config.FailureInjectionRate, "Probability (0-100) of injecting failures")
+
+	failureTypes := getParamValueFromArgs("failure-types")
+	var dummyFailureTypes multiString
+	f.Var(&dummyFailureTypes, "failure-types", "List of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found)")
+	f.Lookup("failure-types").NoOptDefVal = dummy
 
 	// These values were manually parsed above in getParamValueFromArgs, we leave this in order to get these flags in --help
 	var dummyString string
@@ -462,6 +502,9 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	}
 	if servedModelNames != nil {
 		config.ServedModelNames = servedModelNames
+	}
+	if failureTypes != nil {
+		config.FailureTypes = failureTypes
 	}
 
 	if config.HashSeed == "" {

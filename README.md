@@ -124,6 +124,8 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `zmq-endpoint`: ZMQ address to publish events
 - `zmq-max-connect-attempts`: the maximum number of ZMQ connection attempts, defaults to 0, maximum: 10
 - `event-batch-size`: the maximum number of kv-cache events to be sent together, defaults to 16
+- `failure-injection-rate`: probability (0-100) of injecting failures, optional, default is 0
+- `failure-types`: list of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found), optional, if empty all types are used
 - `fake-metrics`: represents a predefined set of metrics to be sent to Prometheus as a substitute for the real metrics. When specified, only these fake metrics will be reported — real metrics and fake metrics will never be reported together. The set should include values for 
     - `running-requests`
     - `waiting-requests`
@@ -132,7 +134,6 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 
     Example:
       {"running-requests":10,"waiting-requests":30,"kv-cache-usage":0.4,"loras":[{"running":"lora4,lora2","waiting":"lora3","timestamp":1257894567},{"running":"lora4,lora3","waiting":"","timestamp":1257894569}]}
-      
 
 In addition, as we are using klog, the following parameters are available:
 - `add_dir_header`: if true, adds the file directory to the header of the log messages
