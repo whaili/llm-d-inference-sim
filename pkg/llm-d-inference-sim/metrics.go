@@ -22,6 +22,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -135,20 +136,25 @@ func (s *VllmSimulator) reportLoras() {
 		return
 	}
 
-	var loras []string
-	s.runningLoras.Range(func(key interface{}, _ interface{}) bool {
+	var runningLoras []string
+	s.runningLoras.Range(func(key any, _ any) bool {
 		if lora, ok := key.(string); ok {
-			loras = append(loras, lora)
+			runningLoras = append(runningLoras, lora)
+		}
+		return true
+	})
+	var waitingLoras []string
+	s.waitingLoras.Range(func(key any, _ any) bool {
+		if lora, ok := key.(string); ok {
+			waitingLoras = append(waitingLoras, lora)
 		}
 		return true
 	})
 
-	allLoras := strings.Join(loras, ",")
 	s.loraInfo.WithLabelValues(
 		strconv.Itoa(s.config.MaxLoras),
-		allLoras,
-		// TODO - add names of loras in queue
-		"").Set(float64(time.Now().Unix()))
+		strings.Join(runningLoras, ","),
+		strings.Join(waitingLoras, ",")).Set(float64(time.Now().Unix()))
 }
 
 // reportRunningRequests sets information about running completion requests
@@ -184,6 +190,7 @@ func (s *VllmSimulator) unregisterPrometheus() {
 func (s *VllmSimulator) startMetricsUpdaters(ctx context.Context) {
 	go s.waitingRequestsUpdater(ctx)
 	go s.runningRequestsUpdater(ctx)
+	go s.lorasUpdater(ctx)
 }
 
 // waitingRequestsUpdater updates the waiting requests metric by listening on the relevant channel
@@ -209,5 +216,50 @@ func (s *VllmSimulator) runningRequestsUpdater(ctx context.Context) {
 			s.nRunningReqs += inc
 			s.reportRunningRequests()
 		}
+	}
+}
+
+// lorasUpdater updates the running loras metric by listening on the relevant channel
+// one function updates both waiting and running loras since they a part of the same prometheus gauge
+func (s *VllmSimulator) lorasUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case loraUpdate := <-s.lorasChan:
+			switch loraUpdate.state {
+			case waitingUsageState:
+				s.incrementLoraRefCount(loraUpdate.name, &s.waitingLoras)
+			case runningUsageState:
+				s.decrementLoraRefCount(loraUpdate.name, &s.waitingLoras)
+				s.incrementLoraRefCount(loraUpdate.name, &s.runningLoras)
+			case doneUsageState:
+				s.decrementLoraRefCount(loraUpdate.name, &s.runningLoras)
+			}
+			s.reportLoras()
+		}
+	}
+}
+
+func (s *VllmSimulator) incrementLoraRefCount(lora string, theMap *sync.Map) {
+	count := 0
+	if value, ok := theMap.Load(lora); ok {
+		// if lora is already in the map - increment its counter
+		count = value.(int)
+	}
+	theMap.Store(lora, count+1)
+}
+
+func (s *VllmSimulator) decrementLoraRefCount(lora string, theMap *sync.Map) {
+	if value, ok := theMap.Load(lora); ok {
+		count := value.(int)
+		if count > 1 {
+			theMap.Store(lora, count-1)
+		} else {
+			// last lora instance stopped its execution - remove from the map
+			theMap.Delete(lora)
+		}
+	} else {
+		s.logger.Error(nil, "Zero model reference", "model", lora)
 	}
 }
