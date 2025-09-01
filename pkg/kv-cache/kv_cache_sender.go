@@ -88,6 +88,10 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 				return nil
 			}
 
+			if s.publisher == nil {
+				continue
+			}
+
 			// Encode eventData's hash value to msgpack.RawMessage
 			var payload []byte
 			var err error
@@ -120,6 +124,9 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 			}
 
 		case <-timer.C:
+			if s.publisher == nil {
+				continue
+			}
 			if err := s.publishHelper(ctx); err != nil {
 				return err
 			}
