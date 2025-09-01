@@ -495,7 +495,7 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 							model:            displayModel,
 							doRemotePrefill:  req.IsDoRemotePrefill(),
 						},
-						responseTokens, toolCalls, finishReason, usageDataToSend,
+						usageDataToSend.PromptTokens, responseTokens, toolCalls, finishReason, usageDataToSend,
 					)
 				} else {
 					if req.IsDoRemoteDecode() {
@@ -646,8 +646,9 @@ func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.Reques
 	}
 
 	// calculate how long to wait before returning the response, time is based on number of tokens
-	numOfTokens := usageData.CompletionTokens
-	totalMillisToWait := s.getTimeToFirstToken(doRemotePrefill) + s.getTotalInterTokenLatency(numOfTokens)
+	nPromptTokens := usageData.PromptTokens
+	nGenTokens := usageData.CompletionTokens
+	totalMillisToWait := s.getTimeToFirstToken(nPromptTokens, doRemotePrefill) + s.getTotalInterTokenLatency(nGenTokens)
 	time.Sleep(time.Duration(totalMillisToWait) * time.Millisecond)
 
 	ctx.Response.Header.SetContentType("application/json")
@@ -665,14 +666,23 @@ func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.Reques
 }
 
 // returns time to first token based on the current request's doRemotePrefill
-func (s *VllmSimulator) getTimeToFirstToken(doRemotePrefill bool) int {
-	mean := float64(s.config.TimeToFirstToken)
-	stddev := float64(s.config.TimeToFirstTokenStdDev)
+func (s *VllmSimulator) getTimeToFirstToken(nPromptTokens int, doRemotePrefill bool) int {
 	if doRemotePrefill {
-		mean = float64(s.config.KVCacheTransferLatency)
-		stddev = float64(s.config.KVCacheTransferLatencyStdDev)
+		if s.config.KVCacheTransferLatency == 0 && s.config.KVCacheTransferLatencyStdDev == 0 {
+			// is disaggregated PD and ttft is calculated using number of prompt tokens
+			kvCacheTransT := s.config.KVCacheTransferTimePerToken * nPromptTokens
+			return int(common.RandomNorm(float64(kvCacheTransT), float64(s.config.KVCacheTransferTimeStdDev)))
+		}
+		// is disaggregated PD and *not* using number of prompt tokens
+		return int(common.RandomNorm(float64(s.config.KVCacheTransferLatency), float64(s.config.KVCacheTransferLatencyStdDev)))
 	}
-	return int(common.RandomNorm(mean, stddev))
+	if s.config.TimeToFirstToken == 0 && s.config.TimeToFirstTokenStdDev == 0 {
+		// is aggregated PD and ttft is calculated using number of prompt tokens
+		prefillTime := s.config.PrefillOverhead + nPromptTokens*s.config.PrefillTimePerToken
+		return int(common.RandomNorm(float64(prefillTime), float64(s.config.PrefillTimeStdDev)))
+	}
+	// is aggregated PD and *not* using number of prompt tokens
+	return int(common.RandomNorm(float64(s.config.TimeToFirstToken), float64(s.config.TimeToFirstTokenStdDev)))
 }
 
 // returns inter token latency

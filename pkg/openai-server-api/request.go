@@ -53,9 +53,13 @@ type CompletionRequest interface {
 	GetToolChoice() string
 	// GetMaxCompletionTokens returns the maximum completion tokens requested
 	GetMaxCompletionTokens() *int64
-	// IsDoRemoteDecode() returns true if do_remote_decode field is true in the request, this means that this is prefill request
+	// IsDoRemoteDecode() returns true if do_remote_decode field is true in the request,
+	// when the field is true, the decode phase should be done on remote pod,
+	// whereas prefill phase is done on local pod, thus this is a prefill request
 	IsDoRemoteDecode() bool
-	// IsDoRemotePrefill() returns true if do_remote_prefill field is true in the request, this means that this is decode request
+	// IsDoRemotePrefill() returns true if do_remote_prefill field is true in the request,
+	// when the field is true, the prefill phase should be done on remote pod,
+	// whereas decode phase is done on local pod, thus this is a decode request
 	IsDoRemotePrefill() bool
 }
 
