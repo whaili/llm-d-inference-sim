@@ -495,7 +495,7 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 							model:            displayModel,
 							doRemotePrefill:  req.IsDoRemotePrefill(),
 						},
-						usageDataToSend.PromptTokens, responseTokens, toolCalls, finishReason, usageDataToSend,
+						usageData.PromptTokens, responseTokens, toolCalls, finishReason, usageDataToSend,
 					)
 				} else {
 					if req.IsDoRemoteDecode() {
