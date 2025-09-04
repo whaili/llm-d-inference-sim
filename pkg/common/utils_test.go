@@ -31,13 +31,13 @@ var _ = Describe("Utils", Ordered, func() {
 
 	Context("GetRandomResponseText", func() {
 		It("should return complete text", func() {
-			text, finishReason := GetRandomResponseText(nil)
+			text, finishReason := GetRandomResponseText(nil, false)
 			Expect(IsValidText(text)).To(BeTrue())
 			Expect(finishReason).Should(Equal(StopFinishReason))
 		})
 		It("should return short text", func() {
 			maxCompletionTokens := int64(2)
-			text, finishReason := GetRandomResponseText(&maxCompletionTokens)
+			text, finishReason := GetRandomResponseText(&maxCompletionTokens, false)
 			tokensCnt := int64(len(Tokenize(text)))
 			Expect(tokensCnt).Should(BeNumerically("<=", maxCompletionTokens))
 			if tokensCnt == maxCompletionTokens {
@@ -50,7 +50,7 @@ var _ = Describe("Utils", Ordered, func() {
 		It("should return long text", func() {
 			// return required number of tokens although it is higher than ResponseLenMax
 			maxCompletionTokens := int64(ResponseLenMax * 5)
-			text, finishReason := GetRandomResponseText(&maxCompletionTokens)
+			text, finishReason := GetRandomResponseText(&maxCompletionTokens, false)
 			tokensCnt := int64(len(Tokenize(text)))
 			Expect(tokensCnt).Should(BeNumerically("<=", maxCompletionTokens))
 			Expect(IsValidText(text)).To(BeTrue())
@@ -61,6 +61,23 @@ var _ = Describe("Utils", Ordered, func() {
 				Expect(finishReason).To(Equal(StopFinishReason))
 			}
 		})
+
+		DescribeTable("should return exact num of tokens",
+			func(maxCompletionTokens int) {
+				n := int64(maxCompletionTokens)
+				text, finishReason := GetRandomResponseText(&n, true)
+				nGenTokens := int64(len(Tokenize(text)))
+				Expect(nGenTokens).Should(Equal(n))
+				Expect(finishReason).To(Equal(LengthFinishReason))
+			},
+			func(maxCompletionTokens int) string {
+				return fmt.Sprintf("maxCompletionTokens: %d", maxCompletionTokens)
+			},
+			Entry("1", 1),
+			Entry("42", 42),
+			Entry("99", 99),
+			Entry("10000", 10000),
+		)
 	})
 
 	Context("GetResponseText", func() {

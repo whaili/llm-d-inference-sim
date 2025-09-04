@@ -326,6 +326,10 @@ func (s *VllmSimulator) validateRequest(req openaiserverapi.CompletionRequest) (
 		return "Prefill does not support streaming", fasthttp.StatusBadRequest
 	}
 
+	if req.GetIgnoreEOS() && req.GetMaxCompletionTokens() == nil {
+		return "Ignore_eos is true but max_completion_tokens (or max_tokens) is not set", fasthttp.StatusBadRequest
+	}
+
 	return "", fasthttp.StatusOK
 }
 

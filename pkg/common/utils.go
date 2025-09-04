@@ -165,7 +165,9 @@ func GetRandomText(numOfTokens int) string {
 // if maxCompletionTokens is nil
 // - the response text's length is randomly chosen from the range [1, responseLenMax] according additional parameters
 // - finish reason is stop
-func GetRandomResponseText(maxCompletionTokens *int64) (string, string) {
+// if ignore_eos is true - the response will be generated with exactly maxCompletionTokens tokens
+// - request was validated so that when ignore_eos is true, maxCompletionTokens must be defined
+func GetRandomResponseText(maxCompletionTokens *int64, ignore_eos bool) (string, string) {
 	numOfTokens := 0
 	finishReason := StopFinishReason
 
@@ -174,11 +176,16 @@ func GetRandomResponseText(maxCompletionTokens *int64) (string, string) {
 		numOfTokens = GetRandomResponseLen()
 	} else {
 		maxTokens := int(*maxCompletionTokens)
-		// max tokens is defined - generate real length of the response based on it
-		numOfTokens = getResponseLengthByHistogram(maxTokens)
-		if numOfTokens == maxTokens {
-			// if response should be create with maximum number of tokens - finish reason will be 'length'
+		if ignore_eos {
+			numOfTokens = maxTokens
 			finishReason = LengthFinishReason
+		} else {
+			// max tokens is defined - generate real length of the response based on it
+			numOfTokens = getResponseLengthByHistogram(maxTokens)
+			if numOfTokens == maxTokens {
+				// if response should be create with maximum number of tokens - finish reason will be 'length'
+				finishReason = LengthFinishReason
+			}
 		}
 	}
 

@@ -59,6 +59,8 @@ type CompletionRequest interface {
 	GetToolChoice() string
 	// GetMaxCompletionTokens returns the maximum completion tokens requested
 	GetMaxCompletionTokens() *int64
+	// GetIgnoreEOS returns true if the end-of-sequence tokens will be ignored
+	GetIgnoreEOS() bool
 	// IsDoRemoteDecode() returns true if do_remote_decode field is true in the request,
 	// when the field is true, the decode phase should be done on remote pod,
 	// whereas prefill phase is done on local pod, thus this is a prefill request
@@ -93,6 +95,8 @@ type baseCompletionRequest struct {
 	RemotePort int `json:"remote_port"`
 	// The number of tokens in the prompt that are in the local KV Cache
 	cachedPromptTokens int
+	// IgnoreEOS is a boolean value, true when the model should ignore end-of-sequence tokens
+	IgnoreEOS bool `json:"ignore_eos"`
 }
 
 // StreamOptions defines streaming options for streaming requests
@@ -129,6 +133,11 @@ func (b *baseCompletionRequest) IsDoRemotePrefill() bool {
 // in the local KV Cache
 func (b *baseCompletionRequest) GetNumberOfCachedPromptTokens() int {
 	return b.cachedPromptTokens
+}
+
+// GetIgnoreEOS returns the value of IgnoreEOS
+func (b *baseCompletionRequest) GetIgnoreEOS() bool {
+	return b.IgnoreEOS
 }
 
 // SetNumberOfCachedPromptTokens sets the number of tokens in the prompt that are
@@ -244,7 +253,7 @@ func (req ChatCompletionRequest) CreateResponseText(mode string) ([]string, stri
 	if mode == common.ModeEcho {
 		text, finishReason = common.GetResponseText(maxTokens, req.getLastUserMsg())
 	} else {
-		text, finishReason = common.GetRandomResponseText(maxTokens)
+		text, finishReason = common.GetRandomResponseText(maxTokens, req.GetIgnoreEOS())
 	}
 
 	tokens := common.Tokenize(text)
@@ -299,7 +308,7 @@ func (req TextCompletionRequest) CreateResponseText(mode string) ([]string, stri
 	if mode == common.ModeEcho {
 		text, finishReason = common.GetResponseText(maxTokens, req.Prompt)
 	} else {
-		text, finishReason = common.GetRandomResponseText(maxTokens)
+		text, finishReason = common.GetRandomResponseText(maxTokens, req.GetIgnoreEOS())
 	}
 
 	tokens := common.Tokenize(text)
