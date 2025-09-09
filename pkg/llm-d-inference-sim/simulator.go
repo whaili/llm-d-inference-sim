@@ -672,12 +672,13 @@ func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, r
 	}
 
 	// calculate how long to wait before returning the response, time is based on number of tokens
-	nPromptTokens := usageData.PromptTokens
 	nCachedPromptTokens := reqCtx.CompletionReq.GetNumberOfCachedPromptTokens()
-	nGenTokens := usageData.CompletionTokens
-	ttft := s.getTimeToFirstToken(nPromptTokens, nCachedPromptTokens, reqCtx.CompletionReq.IsDoRemotePrefill())
-	totalMillisToWait := ttft + s.getTotalInterTokenLatency(nGenTokens)
-	time.Sleep(time.Duration(totalMillisToWait) * time.Millisecond)
+	ttft := s.getTimeToFirstToken(usageData.PromptTokens, nCachedPromptTokens, reqCtx.CompletionReq.IsDoRemotePrefill())
+	time.Sleep(time.Duration(ttft) * time.Millisecond)
+	for range usageData.CompletionTokens - 1 {
+		perTokenLatency := s.getInterTokenLatency()
+		time.Sleep(time.Duration(perTokenLatency) * time.Millisecond)
+	}
 
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
@@ -706,25 +707,16 @@ func (s *VllmSimulator) getTimeToFirstToken(nPromptTokens int, nCachedPromptToke
 	}
 	if s.config.TimeToFirstToken == 0 && s.config.TimeToFirstTokenStdDev == 0 {
 		// is aggregated PD and ttft is calculated using number of prompt tokens that are not in kv cache
-		prefillTime := s.config.PrefillOverhead + (nPromptTokens-nCachedPromptTokens)*s.config.PrefillTimePerToken
+		prefillTime := s.GetPrefillOverhead() + (nPromptTokens-nCachedPromptTokens)*s.GetPrefillTimePerToken()
 		return common.RandomNorm(prefillTime, s.config.PrefillTimeStdDev)
 	}
 	// is aggregated PD and *not* using number of prompt tokens
-	return common.RandomNorm(s.config.TimeToFirstToken, s.config.TimeToFirstTokenStdDev)
+	return common.RandomNorm(s.GetTimeToFirstToken(), s.config.TimeToFirstTokenStdDev)
 }
 
 // returns inter token latency
 func (s *VllmSimulator) getInterTokenLatency() int {
-	return common.RandomNorm(s.config.InterTokenLatency, s.config.InterTokenLatencyStdDev)
-}
-
-// returns total inter token latency for the given number of tokens
-func (s *VllmSimulator) getTotalInterTokenLatency(numOfTokens int) int {
-	total := 0
-	for range numOfTokens - 1 {
-		total += s.getInterTokenLatency()
-	}
-	return total
+	return common.RandomNorm(s.GetInterTokenLatency(), s.config.InterTokenLatencyStdDev)
 }
 
 // createModelsResponse creates and returns ModelResponse for the current state, returned array of models contains the base model + LoRA adapters if exist
@@ -817,4 +809,27 @@ func (s *VllmSimulator) showConfig(dp bool) error {
 	}
 	s.logger.Info("Configuration:", "", string(cfgJSON))
 	return nil
+}
+
+func (s *VllmSimulator) getCurrFactor() float64 {
+	if s.config.MaxNumSeqs <= 1 {
+		return 1.0
+	}
+	return 1 + (s.config.TimeFactorUnderLoad-1)*float64(s.nRunningReqs-1)/float64(s.config.MaxNumSeqs-1)
+}
+
+func (s *VllmSimulator) GetTimeToFirstToken() int {
+	return int(float64(s.config.TimeToFirstToken) * s.getCurrFactor())
+}
+
+func (s *VllmSimulator) GetPrefillOverhead() int {
+	return int(float64(s.config.PrefillOverhead) * s.getCurrFactor())
+}
+
+func (s *VllmSimulator) GetPrefillTimePerToken() int {
+	return int(float64(s.config.PrefillTimePerToken) * s.getCurrFactor())
+}
+
+func (s *VllmSimulator) GetInterTokenLatency() int {
+	return int(float64(s.config.InterTokenLatency) * s.getCurrFactor())
 }
