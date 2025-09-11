@@ -322,11 +322,10 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 		It("Should send correct kv cache usage metrics", func() {
-			modelName := "Qwen/Qwen2-0.5B"
 			// Three requests, there are should be two blocks in the kv cache, because
 			// the first and the second prompt share a block.
 			ctx := context.TODO()
-			args := []string{"cmd", "--model", modelName, "--mode", common.ModeRandom,
+			args := []string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
 				"--time-to-first-token", "5000", "--tokenizers-cache-dir", tmpDir}
 
@@ -342,19 +341,19 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in Haifa today? Is it cold?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 				{
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in Haifa today?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 				{
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in New York today?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 			}
 
@@ -385,7 +384,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				Expect(metrics).To(ContainSubstring("vllm:num_requests_waiting{model_name=\"Qwen/Qwen2-0.5B\"} 0"))
 				Expect(metrics).To(ContainSubstring("vllm:gpu_cache_usage_perc{model_name=\"Qwen/Qwen2-0.5B\"} 0.125"))
 
-				time.Sleep(3 * time.Second)
+				time.Sleep(4 * time.Second)
 				metricsResp, err = client.Get(metricsUrl)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
@@ -402,9 +401,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		})
 
 		It("Should send correct kv cache usage metrics for sequentual requests", func() {
-			modelName := "Qwen/Qwen2-0.5B"
 			ctx := context.TODO()
-			args := []string{"cmd", "--model", modelName, "--mode", common.ModeRandom,
+			args := []string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
 				"--time-to-first-token", "5000", "--tokenizers-cache-dir", tmpDir, "--max-num-seqs", "2"}
 
@@ -420,19 +418,19 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in Haifa today? Is it cold?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 				{
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in Haifa today?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 				{
 					Prompt: openai.CompletionNewParamsPromptUnion{
 						OfString: openai.String("What is the weather like in New York today?"),
 					},
-					Model: openai.CompletionNewParamsModel(modelName),
+					Model: openai.CompletionNewParamsModel(qwenModelName),
 				},
 			}
 
